@@ -166,6 +166,10 @@ export function useCRMStore() {
     setRequirements((prev) => prev.filter((r) => r.id !== id));
   }
 
+  function replaceRequirements(nextRequirements) {
+    setRequirements(Array.isArray(nextRequirements) ? nextRequirements : []);
+  }
+
   return {
     launches,
     channels,
@@ -186,6 +190,7 @@ export function useCRMStore() {
     addRequirement,
     updateRequirement,
     deleteRequirement,
+    replaceRequirements,
 
     setMessages,
     setRules,

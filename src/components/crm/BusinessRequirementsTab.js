@@ -549,6 +549,7 @@ export default function BusinessRequirementsTab({
   onAddRequirement,
   onUpdateRequirement,
   onDeleteRequirement,
+  onImportRequirements,
   onDownloadTemplate,
 }) {
   const toast = useToast();
@@ -632,17 +633,22 @@ export default function BusinessRequirementsTab({
 
       if (confirmReplace) {
         if (toast) toast("Применяю импорт бизнес-требований");
-        requirements.forEach((item) => {
-          if (typeof onDeleteRequirement === "function") {
-            onDeleteRequirement(item.id);
-          }
-        });
 
-        importedRequirements.forEach((item) => {
-          if (typeof onAddRequirement === "function") {
-            onAddRequirement(item);
-          }
-        });
+        if (typeof onImportRequirements === "function") {
+          onImportRequirements(importedRequirements);
+        } else {
+          requirements.forEach((item) => {
+            if (typeof onDeleteRequirement === "function") {
+              onDeleteRequirement(item.id);
+            }
+          });
+
+          importedRequirements.forEach((item) => {
+            if (typeof onAddRequirement === "function") {
+              onAddRequirement(item);
+            }
+          });
+        }
 
         handleCloseEditor();
         if (toast) toast("Импорт завершён");

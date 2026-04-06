@@ -57,6 +57,7 @@ function AppInner() {
     addRequirement,
     updateRequirement,
     deleteRequirement,
+    replaceRequirements,
     setMessages,
     setRules,
     setPreferences,
@@ -138,6 +139,55 @@ function AppInner() {
   function handleDeleteRequirement(id) {
     deleteRequirement(id);
     toast("Требование удалено");
+  }
+
+  function handleImportRequirements(importedRequirements) {
+    const nextRequirements = Array.isArray(importedRequirements)
+      ? importedRequirements
+      : [];
+
+    replaceRequirements(nextRequirements);
+    toast("Импортировано " + nextRequirements.length + " бизнес-требований");
+
+    if (nextRequirements.length === 0) {
+      return { importedCount: 0, schedule: null };
+    }
+
+    const activeChannels = channels.filter((channel) => channel.status === "active");
+    if (activeChannels.length === 0) {
+      toast(
+        "Требования импортированы, но для генерации тайминга нужен хотя бы один active-канал",
+        "warn"
+      );
+      return { importedCount: nextRequirements.length, schedule: null };
+    }
+
+    const schedule = buildSchedule({
+      requirements: nextRequirements,
+      channels,
+      rules,
+      existingLaunches: launches,
+    });
+
+    setScheduleDraft(schedule);
+    setActiveTab("launches");
+
+    if (schedule.proposed.length > 0) {
+      toast("Черновик тайминга собран: " + schedule.proposed.length + " запусков");
+    } else {
+      const firstReason = schedule.skipped[0]?.reason;
+      toast(
+        firstReason
+          ? `Требования импортированы, но тайминг не собран: ${firstReason}`
+          : "Требования импортированы, но планировщик не нашёл подходящих слотов",
+        "warn"
+      );
+    }
+
+    return {
+      importedCount: nextRequirements.length,
+      schedule,
+    };
   }
 
   function handleImportLaunches(imported) {
@@ -416,6 +466,7 @@ function AppInner() {
               onAddRequirement={handleAddRequirement}
               onUpdateRequirement={handleUpdateRequirement}
               onDeleteRequirement={handleDeleteRequirement}
+              onImportRequirements={handleImportRequirements}
               onDownloadTemplate={handleDownloadRequirementsTemplate}
             />
           )}
