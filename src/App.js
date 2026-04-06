@@ -564,7 +564,7 @@ function AppInner() {
               position: "fixed",
               inset: 0,
               zIndex: 290,
-              background: "rgba(21,24,28,0.14)",
+              background: "rgba(0,0,0,0.12)",
             }}
             onClick={() => setAssistantOpen(false)}
           />
@@ -576,10 +576,10 @@ function AppInner() {
               width: "min(920px,calc(100vw - 56px))",
               maxHeight: "calc(100vh - 144px)",
               zIndex: 295,
-              background: "#fbfcfe",
+              background: "#ffffff",
               borderRadius: "20px",
-              border: "1px solid #dde2e7",
-              boxShadow: "0 20px 50px rgba(20,24,32,0.1)",
+              border: "1px solid #e5e5e5",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.08)",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
@@ -593,9 +593,9 @@ function AppInner() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 padding: "14px 18px",
-                borderBottom: "1px solid #e6ebf0",
+                borderBottom: "1px solid #ececec",
                 flexShrink: 0,
-                background: "#f4f7fa",
+                background: "#fafafa",
               }}
             >
               <div

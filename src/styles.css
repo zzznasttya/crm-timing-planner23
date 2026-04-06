@@ -1,18 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
-  --bg: #eef0f2;
-  --sheet: #f7f8fa;
+  --bg: #f3f3f3;
+  --sheet: #ffffff;
   --paper: #ffffff;
-  --paper-soft: #f1f3f5;
+  --paper-soft: #f7f7f7;
   --ink: #17181a;
-  --ink-soft: #666b72;
-  --line: #d7dbe0;
+  --ink-soft: #666666;
+  --line: #dfdfdf;
   --line-strong: #23262b;
   --accent: #b43a3a;
   --accent-dark: #8d2e2e;
   --accent-soft: #f1d9d9;
-  --shadow: 0 18px 48px rgba(20, 24, 32, 0.1);
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -27,7 +27,7 @@ body,
   font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   background:
     radial-gradient(circle at top, rgba(180, 58, 58, 0.08), transparent 30%),
-    linear-gradient(180deg, #f7f8fa 0%, #edf0f3 100%);
+    linear-gradient(180deg, #ffffff 0%, #f3f3f3 100%);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -52,7 +52,7 @@ body {
   align-items: stretch;
   gap: 24px;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #ffffff 0%, #f2f4f7 100%);
+  background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 30px 30px 14px 14px;
   box-shadow: var(--shadow);
@@ -104,8 +104,8 @@ body {
   align-items: stretch;
   gap: 12px;
   background:
-    linear-gradient(180deg, rgba(23, 24, 26, 0.01), rgba(23, 24, 26, 0.04)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.18));
+    linear-gradient(180deg, rgba(0, 0, 0, 0.01), rgba(0, 0, 0, 0.03)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.3));
   border-left: 1px solid rgba(23, 24, 26, 0.08);
 }
 
@@ -133,7 +133,7 @@ body {
   display: block;
   height: 4px;
   margin: -18px -18px 18px;
-  background: linear-gradient(90deg, var(--accent) 0%, #e3e7eb 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, #f0f0f0 100%);
 }
 
 .section-card {
@@ -198,7 +198,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #d2d7dd;
+  border: 1px solid #dddddd;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   border-radius: 14px;
@@ -235,7 +235,7 @@ label {
 
 .btn,
 .btn-small {
-  border: 1px solid #d2d7dd;
+  border: 1px solid #dddddd;
   background: rgba(255, 255, 255, 0.82);
   color: var(--ink);
   border-radius: 999px;
@@ -306,20 +306,20 @@ label {
   top: 0;
   z-index: 1;
   background: #eee7e0;
-  background: #f1f3f6;
-  color: #555c64;
+  background: #f5f5f5;
+  color: #555555;
   text-align: left;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 12px 14px;
-  border-bottom: 1px solid #dde2e7;
+  border-bottom: 1px solid #e3e3e3;
 }
 
 .crm-table tbody td {
   padding: 12px 14px;
-  border-bottom: 1px solid #eceff3;
+  border-bottom: 1px solid #efefef;
   vertical-align: top;
   font-size: 13px;
   color: var(--ink);
@@ -330,7 +330,7 @@ label {
 }
 
 .crm-table tbody tr:hover {
-  background: #f7f9fc;
+  background: #fafafa;
 }
 
 .actions {
@@ -345,8 +345,8 @@ label {
   gap: 5px;
   border-radius: 999px;
   padding: 4px 9px;
-  background: #eef1f4;
-  color: #434a52;
+  background: #f3f3f3;
+  color: #444444;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -454,16 +454,16 @@ label {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 22px;
-  background: #e1e5ea;
+  background: #e8e8e8;
 }
 
 .calendar-header {
-  background: #f1f4f7;
+  background: #f5f5f5;
   padding: 8px 6px;
   min-height: 56px;
   font-size: 11px;
   font-weight: 700;
-  color: #59616b;
+  color: #5c5c5c;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -481,7 +481,7 @@ label {
 .pressure-low,
 .pressure-medium,
 .pressure-high {
-  background: #f1f4f7;
+  background: #f5f5f5;
 }
 
 .calendar-row-title {
