@@ -10,18 +10,6 @@ const PRIORITIES = ["Высокий", "Средний", "Низкий"];
 const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "пилот / тест"];
 const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
 
-function downloadCSV(content, filename) {
-  const blob = new Blob(["\ufeff" + content], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename || "export.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function getImportedValue(row, keys) {
   for (const key of keys) {
     if (row[key] != null && String(row[key]).trim() !== "") {
@@ -69,19 +57,28 @@ function normalizeImportedDate(value, XLSX) {
 function rowsFromWorksheet(sheet, XLSX) {
   if (!sheet) return [];
 
-  const direct = XLSX.utils.sheet_to_json(sheet, {
-    defval: "",
-  });
-  if (Array.isArray(direct) && direct.length > 0) {
-    return direct;
-  }
+  try {
+    const direct = XLSX.utils.sheet_to_json(sheet, {
+      defval: "",
+      raw: true,
+      blankrows: false,
+    });
+    if (Array.isArray(direct) && direct.length > 0) {
+      return direct;
+    }
+  } catch {}
 
-  const matrix = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: "",
-    blankrows: false,
-    raw: false,
-  });
+  let matrix = [];
+  try {
+    matrix = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      blankrows: false,
+      raw: true,
+    });
+  } catch {
+    matrix = [];
+  }
 
   if (!Array.isArray(matrix) || matrix.length < 2) {
     matrix.length = 0;
@@ -197,17 +194,6 @@ function buildExportRows(launches, channels) {
   }));
 }
 
-function exportLaunchesToCSV(launches, channels) {
-  const rows = buildExportRows(launches, channels);
-  if (!rows.length) return "";
-  const headers = Object.keys(rows[0]);
-  return [headers, ...rows.map((r) => headers.map((h) => r[h] ?? ""))]
-    .map((row) =>
-      row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-    )
-    .join("\n");
-}
-
 async function exportLaunchesToExcel(launches, channels) {
   const XLSX = await import("xlsx");
   const rows = buildExportRows(launches, channels);
@@ -236,29 +222,26 @@ function findNextFreeSlot(launch, allLaunches, channels) {
 
 async function importLaunchesFromFile(file, channels) {
   const XLSX = await import("xlsx");
-  const lower = file.name.toLowerCase();
-  let rows = [];
-  if (lower.endsWith(".csv")) {
-    const text = await file.text();
-    const clean = text.replace(/^\uFEFF/, "").trim();
-    const [headerLine, ...dataLines] = clean.split(/\r?\n/);
-    const headers = headerLine
-      .split(",")
-      .map((h) => h.replace(/^"|"$/g, "").trim());
-    rows = dataLines.filter(Boolean).map((line) => {
-      const vals = line.split(",").map((v) => v.replace(/^"|"$/g, "").trim());
-      return Object.fromEntries(headers.map((h, i) => [h, vals[i] || ""]));
-    });
-  } else {
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {
+  const buf = await file.arrayBuffer();
+  let wb;
+
+  try {
+    wb = XLSX.read(buf, {
       type: "array",
-      cellDates: true,
-      raw: false,
-      dense: true,
+      cellDates: false,
+      dense: false,
     });
-    rows = rowsFromWorksheet(wb.Sheets[wb.SheetNames[0]], XLSX);
+  } catch (error) {
+    throw new Error(error?.message || "Не удалось прочитать Excel-файл");
   }
+
+  const firstSheetName = wb?.SheetNames?.[0];
+  const firstSheet = firstSheetName ? wb.Sheets[firstSheetName] : null;
+  if (!firstSheetName || !firstSheet) {
+    throw new Error("Ошибка при импорте листа");
+  }
+
+  const rows = rowsFromWorksheet(firstSheet, XLSX);
   if (!rows.length) throw new Error("Файл пустой");
 
   const imported = rows
@@ -278,10 +261,12 @@ async function importLaunchesFromFile(file, channels) {
       );
       const duration =
         Number(getImportedValue(r, ["Длительность"])) || ch?.duration || 5;
+      const campaignTypeRaw =
+        getImportedValue(r, ["Тип кампании", "Кампейн", "КП"]) || "CRM акция";
 
       return {
         id: "import-" + Date.now() + "-" + idx,
-        game: getImportedValue(r, ["Игра"]) || GAMES[0],
+        game: String(getImportedValue(r, ["Игра"]) || GAMES[0]),
         channelId: ch?.id || "",
         startDate,
         duration,
@@ -292,15 +277,15 @@ async function importLaunchesFromFile(file, channels) {
         latestStartDate:
           normalizeImportedDate(getImportedValue(r, ["Поздняя дата"]), XLSX) ||
           startDate,
-        platform: getImportedValue(r, ["Платформа"]) || "АМ+АО",
-        audience: getImportedValue(r, ["База", "Отбор"]) || "",
-        priority: getImportedValue(r, ["Приоритет"]) || "Средний",
-        planningStatus: getImportedValue(r, ["Статус"]) || "бэклог",
-        comment: getImportedValue(r, ["Комментарий", "Коммент"]) || "",
-        campaignType:
-          getImportedValue(r, ["Тип кампании", "Кампейн", "КП"]) ||
-          "CRM акция",
-        manager: getImportedValue(r, ["Менеджер", "На ком задача"]) || "",
+        platform: String(getImportedValue(r, ["Платформа"]) || "АМ+АО"),
+        audience: String(getImportedValue(r, ["База", "Отбор"]) || ""),
+        priority: String(getImportedValue(r, ["Приоритет"]) || "Средний"),
+        planningStatus: String(getImportedValue(r, ["Статус"]) || "бэклог"),
+        comment: String(getImportedValue(r, ["Комментарий", "Коммент"]) || ""),
+        campaignType: String(campaignTypeRaw),
+        manager: String(
+          getImportedValue(r, ["Менеджер", "На ком задача"]) || ""
+        ),
         issues: [],
         conflictStatus: "ok",
       };
@@ -1268,22 +1253,14 @@ export default function LaunchesTab({
   const [editingData, setEditingData] = useState(null);
 
   const fileInputRef = useRef(null);
-  const importTypeRef = useRef("xlsx");
 
   useEffect(() => {
     function handleHeaderImport(event) {
-      importTypeRef.current = event.detail?.type || "xlsx";
       fileInputRef.current?.click();
     }
 
-    function handleHeaderExport(event) {
-      const type = event.detail?.type || "xlsx";
-
-      if (type === "csv") {
-        downloadCSV(exportLaunchesToCSV(launches, channels));
-      } else {
-        exportLaunchesToExcel(launches, channels);
-      }
+    function handleHeaderExport() {
+      exportLaunchesToExcel(launches, channels);
     }
 
     document.addEventListener("crm-trigger-import", handleHeaderImport);
@@ -1296,7 +1273,8 @@ export default function LaunchesTab({
   }, [launches, channels]);
 
   const filtered = useMemo(() => {
-    return launches.filter((item) => {
+    const safeLaunches = Array.isArray(launches) ? launches : [];
+    return safeLaunches.filter((item) => {
       const gameValue = (item.game || "").toLowerCase();
       const audienceValue = (item.audience || "").toLowerCase();
       const searchValue = search.toLowerCase();
@@ -1465,7 +1443,6 @@ export default function LaunchesTab({
           <button
             className="btn"
             onClick={() => {
-              importTypeRef.current = "xlsx";
               if (fileInputRef.current) {
                 fileInputRef.current.value = "";
                 fileInputRef.current.click();
@@ -1506,7 +1483,7 @@ export default function LaunchesTab({
           <input
             ref={fileInputRef}
             type="file"
-            accept={importTypeRef.current === "csv" ? ".csv" : ".xlsx,.xls"}
+            accept=".xlsx,.xls"
             style={{ display: "none" }}
             onChange={handleImportFileChange}
           />
