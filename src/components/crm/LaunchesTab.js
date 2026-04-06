@@ -84,17 +84,57 @@ function rowsFromWorksheet(sheet, XLSX) {
   });
 
   if (!Array.isArray(matrix) || matrix.length < 2) {
-    return [];
+    matrix.length = 0;
   }
 
-  const [headerRow, ...bodyRows] = matrix;
-  const headers = (headerRow || []).map((cell) => String(cell || "").trim());
-  if (!headers.some(Boolean)) {
-    return [];
+  if (matrix.length >= 2) {
+    const [headerRow, ...bodyRows] = matrix;
+    const headers = (headerRow || []).map((cell) => String(cell || "").trim());
+    if (headers.some(Boolean)) {
+      const rows = bodyRows
+        .filter(
+          (row) =>
+            Array.isArray(row) &&
+            row.some((cell) => String(cell || "").trim() !== "")
+        )
+        .map((row) => {
+          const obj = {};
+          headers.forEach((header, index) => {
+            if (!header) return;
+            obj[header] = row[index] ?? "";
+          });
+          return obj;
+        });
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
   }
+
+  const ref = sheet["!ref"];
+  if (!ref) return [];
+
+  const range = XLSX.utils.decode_range(ref);
+  const rawMatrix = [];
+  for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
+    const row = [];
+    for (let colIndex = range.s.c; colIndex <= range.e.c; colIndex += 1) {
+      const cellRef = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+      const cell = sheet[cellRef];
+      const value = cell?.w ?? cell?.v ?? "";
+      row.push(value);
+    }
+    rawMatrix.push(row);
+  }
+
+  if (rawMatrix.length < 2) return [];
+
+  const [headerRow, ...bodyRows] = rawMatrix;
+  const headers = headerRow.map((cell) => String(cell || "").trim());
+  if (!headers.some(Boolean)) return [];
 
   return bodyRows
-    .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || "").trim() !== ""))
+    .filter((row) => row.some((cell) => String(cell || "").trim() !== ""))
     .map((row) => {
       const obj = {};
       headers.forEach((header, index) => {
@@ -178,7 +218,11 @@ async function importLaunchesFromFile(file, channels) {
     });
   } else {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, {
+      type: "array",
+      cellDates: true,
+      raw: false,
+    });
     rows = rowsFromWorksheet(wb.Sheets[wb.SheetNames[0]], XLSX);
   }
   if (!rows.length) throw new Error("Файл пустой");
