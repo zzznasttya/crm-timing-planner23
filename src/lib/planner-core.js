@@ -47,6 +47,18 @@ function countActiveOnDay(day, launches) {
   ).length;
 }
 
+function countChannelActiveOnDay(day, launches, channelId) {
+  return launches.filter(
+    (launch) =>
+      launch.planningStatus !== "приостановлено" &&
+      launch.channelId === channelId &&
+      launch.startDate &&
+      launch.endDate &&
+      day >= launch.startDate &&
+      day <= launch.endDate
+  ).length;
+}
+
 function buildIntervalDays(startDate, endDate) {
   if (!startDate || !endDate) return [];
   return dateRange(startDate, endDate);
@@ -141,6 +153,84 @@ function describePressure(score) {
 
 function normalizeAssistantText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function isLaunchedStatus(value) {
+  return normalizeAssistantText(value) === "запущено";
+}
+
+function getChannelHistoryStats(channelId, launches) {
+  const history = launches.filter(
+    (launch) =>
+      launch.channelId === channelId &&
+      launch.startDate &&
+      launch.planningStatus !== "приостановлено"
+  );
+  const launched = history.filter((launch) => isLaunchedStatus(launch.planningStatus));
+  const measured = launched.filter((launch) => Number(launch.sentBaseCount) > 0);
+
+  const recentCutoff = new Date();
+  recentCutoff.setDate(recentCutoff.getDate() - 90);
+
+  const recentLaunched = launched.filter((launch) => {
+    const date = parseISO(launch.startDate);
+    return !Number.isNaN(date.getTime()) && date >= recentCutoff;
+  });
+
+  const averageSentBase = measured.length
+    ? measured.reduce((sum, launch) => sum + Number(launch.sentBaseCount || 0), 0) /
+      measured.length
+    : 0;
+
+  return {
+    historyCount: history.length,
+    launchedCount: launched.length,
+    measuredCount: measured.length,
+    recentLaunchedCount: recentLaunched.length,
+    averageSentBase,
+  };
+}
+
+function scoreChannelEffectiveness(channelId, launches) {
+  const stats = getChannelHistoryStats(channelId, launches);
+
+  if (!stats.historyCount) {
+    return {
+      score: 6,
+      description: "По каналу пока нет истории, используется нейтральная оценка.",
+      tone: "neutral",
+    };
+  }
+
+  const completionRatio = stats.launchedCount / Math.max(1, stats.historyCount);
+  const completionScore = completionRatio * 6;
+  const recencyScore = Math.min(6, stats.recentLaunchedCount * 1.5);
+  const baseScore = stats.measuredCount
+    ? Math.min(10, Math.log10(stats.averageSentBase + 1) * 2.2)
+    : 4;
+  const total = Number((completionScore + recencyScore + baseScore).toFixed(1));
+
+  const descriptionParts = [
+    `История запусков: ${stats.launchedCount} из ${stats.historyCount}.`,
+  ];
+
+  if (stats.measuredCount > 0) {
+    descriptionParts.push(
+      `Средняя база коммуникаций: ${Math.round(stats.averageSentBase).toLocaleString("ru-RU")}.`
+    );
+  } else {
+    descriptionParts.push("База коммуникаций по завершённым запускам пока не указана.");
+  }
+
+  if (stats.recentLaunchedCount > 0) {
+    descriptionParts.push(`За последние 90 дней запущено: ${stats.recentLaunchedCount}.`);
+  }
+
+  return {
+    score: total,
+    description: descriptionParts.join(" "),
+    tone: total >= 12 ? "positive" : total >= 7 ? "neutral" : "negative",
+  };
 }
 
 function deriveAssistantPlanningDirectives(assistantContext = {}) {
@@ -249,6 +339,19 @@ function scoreCandidate({
   const normalizedPosition = windowDates.length > 1
     ? windowIndex / (windowDates.length - 1)
     : 0;
+  const channelWindowActiveDays = windowDates.filter(
+    (day) => countChannelActiveOnDay(day, existing, channel.id) > 0
+  ).length;
+  const channelWindowLoadRatio = windowDates.length
+    ? channelWindowActiveDays / windowDates.length
+    : 0;
+  const channelDailyPressure = intervalDays.map((day) =>
+    countChannelActiveOnDay(day, existing, channel.id)
+  );
+  const channelStartPressure = channelDailyPressure[0] || 0;
+  const channelPeakPressure = channelDailyPressure.length
+    ? Math.max(...channelDailyPressure)
+    : 0;
 
   const priorityTier = getPriorityTier(requirement.priority);
   let placementPreferenceScore;
@@ -277,6 +380,14 @@ function scoreCandidate({
     14 - startDayPressure * pressurePenaltyMultiplier
   );
 
+  const channelLoadScore = Math.max(
+    0,
+    14 -
+      channelStartPressure * 4 -
+      channelPeakPressure * 2 -
+      channelWindowLoadRatio * 8
+  );
+
   const sameGameGap = getNearestGapDays(candidate, existing);
   const spacingMultiplier =
     assistantDirectives?.spacingImportance === "high"
@@ -290,6 +401,7 @@ function scoreCandidate({
       : Math.min(16, Math.max(0, sameGameGap - 2) * spacingMultiplier);
 
   const assistantScore = evaluateAssistantScoreAdjustments(candidate, compiled);
+  const effectiveness = scoreChannelEffectiveness(channel.id, existing);
 
   const breakdown = [
     buildBreakdownItem(
@@ -307,6 +419,14 @@ function scoreCandidate({
       pressureScore >= 8 ? "positive" : pressureScore >= 4 ? "neutral" : "negative"
     ),
     buildBreakdownItem(
+      "Загрузка канала",
+      channelLoadScore,
+      `На старте у канала ${channelStartPressure} активн. запуск(ов), пик в интервале ${channelPeakPressure}, занято ${Math.round(
+        channelWindowLoadRatio * 100
+      )}% окна.`,
+      channelLoadScore >= 8 ? "positive" : channelLoadScore >= 4 ? "neutral" : "negative"
+    ),
+    buildBreakdownItem(
       "Позиция в окне",
       placementPreferenceScore,
       `Слот находится на ${windowIndex + 1}-й позиции в окне ${formatDisplayDate(
@@ -321,6 +441,12 @@ function scoreCandidate({
         ? "Поблизости нет других запусков этой игры для той же аудитории."
         : `До ближайшего похожего запуска ${sameGameGap} дн.`,
       spacingScore >= 10 ? "positive" : spacingScore >= 5 ? "neutral" : "negative"
+    ),
+    buildBreakdownItem(
+      "Эффективность канала",
+      effectiveness.score,
+      effectiveness.description,
+      effectiveness.tone
     ),
   ];
 
@@ -382,7 +508,7 @@ function pickBestSlot({
       platform: "АМ+АО",
       priority: requirement.priority,
       campaignType: "CRM акция",
-      duration: channel.duration || 5,
+      duration: getChannelDuration(channel),
       startDate: date,
     };
 

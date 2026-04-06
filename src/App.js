@@ -513,8 +513,8 @@ function AppInner() {
               overflow: "hidden",
               cursor: "pointer",
               boxShadow: mascotHover
-                ? "0 10px 30px rgba(180,58,58,0.22),0 4px 12px rgba(0,0,0,0.12)"
-                : "0 6px 20px rgba(180,58,58,0.14),0 2px 8px rgba(0,0,0,0.08)",
+                ? "0 10px 30px rgba(255,43,43,0.22),0 4px 12px rgba(0,0,0,0.12)"
+                : "0 6px 20px rgba(255,43,43,0.14),0 2px 8px rgba(0,0,0,0.08)",
               transition: "box-shadow 0.18s",
             }}
           >
@@ -541,7 +541,7 @@ function AppInner() {
                 position: "absolute",
                 top: "-2px",
                 right: "-2px",
-                background: "#b43a3a",
+                background: "#ff2b2b",
                 color: "#fff",
                 fontSize: "10px",
                 fontWeight: 800,
@@ -552,7 +552,7 @@ function AppInner() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 2px 8px rgba(180,58,58,0.28)",
+                boxShadow: "0 2px 8px rgba(255,43,43,0.28)",
               }}
             >
               {activeRulesCount}
@@ -613,7 +613,7 @@ function AppInner() {
                     borderRadius: "50%",
                     overflow: "hidden",
                     flexShrink: 0,
-                    boxShadow: "0 3px 10px rgba(180,58,58,0.14)",
+                    boxShadow: "0 3px 10px rgba(255,43,43,0.14)",
                   }}
                 >
                   <img
@@ -645,7 +645,7 @@ function AppInner() {
                     }}
                   >
                     {activeRulesCount > 0 ? (
-                      <span style={{ color: "#b43a3a", fontWeight: 700 }}>
+                      <span style={{ color: "#ff2b2b", fontWeight: 700 }}>
                         {activeRulesCount} правил активно
                       </span>
                     ) : (

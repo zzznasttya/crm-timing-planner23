@@ -22,7 +22,7 @@ function getDayStrings(periodStart, daysCount) {
 }
 
 function getLoadTone(ratio) {
-  if (ratio >= 0.7) return "#b43a3a";
+  if (ratio >= 0.7) return "#ff2b2b";
   if (ratio >= 0.35) return "#17181a";
   return "#cfcfcf";
 }
@@ -267,7 +267,7 @@ export default function ChannelLoadTab({ launches, channels }) {
                         count === 0
                           ? "#e5e5e5"
                           : count === item.peakDailyLoad
-                          ? "#b43a3a"
+                          ? "#ff2b2b"
                           : "#17181a",
                       opacity: count === 0 ? 0.7 : 1,
                     }}

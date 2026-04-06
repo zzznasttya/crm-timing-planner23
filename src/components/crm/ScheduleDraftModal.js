@@ -65,6 +65,9 @@ function decisionBadge(decision, modified) {
   if (decision === "rejected") {
     return <span className="badge badge-red">Отклонено</span>;
   }
+  if (decision !== "accepted") {
+    return <span className="badge">На проверке</span>;
+  }
   if (modified) {
     return <span className="badge badge-orange">Изменено</span>;
   }
@@ -126,7 +129,7 @@ export default function ScheduleDraftModal({
     proposed.map((launch) => cloneLaunch(launch))
   );
   const [decisions, setDecisions] = useState(() =>
-    Object.fromEntries(proposed.map((launch) => [launch.id, "accepted"]))
+    Object.fromEntries(proposed.map((launch) => [launch.id, "pending"]))
   );
   const [editingId, setEditingId] = useState(null);
 
@@ -136,7 +139,11 @@ export default function ScheduleDraftModal({
   );
 
   const acceptedCount = draftLaunches.filter(
-    (launch) => decisions[launch.id] !== "rejected"
+    (launch) => decisions[launch.id] === "accepted"
+  ).length;
+
+  const pendingCount = draftLaunches.filter(
+    (launch) => !decisions[launch.id] || decisions[launch.id] === "pending"
   ).length;
 
   const modifiedCount = draftLaunches.filter((launch) =>
@@ -203,14 +210,14 @@ export default function ScheduleDraftModal({
     );
     setDecisions((prev) => ({
       ...prev,
-      [id]: "accepted",
+      [id]: "pending",
     }));
     setEditingId(null);
   }
 
   function handleConfirm() {
     const accepted = draftLaunches.filter(
-      (launch) => decisions[launch.id] !== "rejected"
+      (launch) => decisions[launch.id] === "accepted"
     );
     onConfirm(accepted);
   }
@@ -246,6 +253,7 @@ export default function ScheduleDraftModal({
           </div>
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <span className="badge">На проверке: {pendingCount}</span>
             <span className="badge badge-green-light">
               Принять: {acceptedCount}
             </span>
@@ -278,7 +286,7 @@ export default function ScheduleDraftModal({
             Принять все
           </label>
           <span className="muted small">
-            Будут добавлены только предложения без статуса «Отклонено».
+            Будут добавлены только предложения со статусом «Принять».
           </span>
         </div>
 
@@ -421,6 +429,11 @@ export default function ScheduleDraftModal({
                         >
                           Отклонить
                         </button>
+                        {decision === "pending" && (
+                          <span className="small muted" style={{ alignSelf: "center" }}>
+                            Выбери действие для этого предложения
+                          </span>
+                        )}
                         {modified && (
                           <button className="btn" onClick={() => resetLaunch(launch.id)}>
                             Сбросить изменения

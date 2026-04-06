@@ -17,9 +17,9 @@ const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "п
 const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
 const GAME_PILL_STYLES = {
   "Матрёшки": {
-    background: "#f2d8d8",
-    color: "#8d2e2e",
-    borderColor: "#e3b8b8",
+    background: "#ffe3e3",
+    color: "#cc0000",
+    borderColor: "#ffc3c3",
   },
   Суперигра: {
     background: "#17181a",
@@ -32,16 +32,16 @@ const GAME_PILL_STYLES = {
     borderColor: "#dbdbdb",
   },
   Алхимия: {
-    background: "#f7ecec",
-    color: "#7f2424",
-    borderColor: "#e7c9c9",
+    background: "#fff0f0",
+    color: "#c40000",
+    borderColor: "#ffd2d2",
   },
 };
 const CHANNEL_PILL_STYLES = [
   {
-    background: "#fff1f1",
-    color: "#8d2e2e",
-    borderColor: "#efcaca",
+    background: "#ffe5e5",
+    color: "#cc0000",
+    borderColor: "#ffc8c8",
   },
   {
     background: "#17181a",
@@ -54,9 +54,9 @@ const CHANNEL_PILL_STYLES = [
     borderColor: "#dddddd",
   },
   {
-    background: "#f5e4e4",
-    color: "#922f2f",
-    borderColor: "#e7c4c4",
+    background: "#fff0f0",
+    color: "#d10000",
+    borderColor: "#ffd3d3",
   },
 ];
 
