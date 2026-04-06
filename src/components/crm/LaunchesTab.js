@@ -220,22 +220,6 @@ async function exportLaunchesToExcel(launches, channels) {
   XLSX.writeFile(wb, "launches.xlsx");
 }
 
-function findNextFreeSlot(launch, allLaunches, channels) {
-  let cursor = launch.startDate;
-  for (let i = 0; i < 365; i++) {
-    const test = {
-      ...launch,
-      startDate: cursor,
-      endDate: calculateEndDate(cursor, launch.duration),
-    };
-    if (!detectConflicts(test, allLaunches, channels).length) return cursor;
-    const d = new Date(cursor);
-    d.setDate(d.getDate() + 1);
-    cursor = d.toISOString().slice(0, 10);
-  }
-  return launch.startDate;
-}
-
 async function importLaunchesFromFile(file, channels) {
   const XLSX = await import("xlsx");
   const buf = await file.arrayBuffer();
@@ -456,6 +440,17 @@ function shiftDateByDays(dateString, days) {
   if (Number.isNaN(date.getTime())) return dateString;
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function getWeekStartFromDateString(dateString) {
+  if (!dateString) return null;
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
 function renderAppliedRules(provenance) {
@@ -1091,9 +1086,7 @@ export default function LaunchesTab({
   onBulkDeleteLaunches,
   onApplyDraft,
   onImportLaunches,
-  onDeleteLaunch,
   onAutoResolve,
-  onSuggestBetterSlot,
   onResetData,
   onDownloadTemplate,
 }) {
@@ -1302,7 +1295,14 @@ export default function LaunchesTab({
       next.duration = Math.max(1, Number(value) || launch.duration || 1);
     }
 
-    onUpdateLaunch(buildNormalizedLaunch(next));
+    const normalized = buildNormalizedLaunch(next);
+    onUpdateLaunch(normalized);
+    if (field === "startDate") {
+      const nextPeriodStart = getWeekStartFromDateString(normalized.startDate);
+      if (nextPeriodStart) {
+        setPeriodStart(nextPeriodStart);
+      }
+    }
     setEditingCell(null);
     setEditingCellValue("");
   }
@@ -1473,22 +1473,25 @@ export default function LaunchesTab({
     );
   }
 
-  function duplicate(launch) {
-    onAddLaunch({
+  function handleEditSelected() {
+    if (selectedLaunches.length !== 1) return;
+    const launch = selectedLaunches[0];
+    setEditingId(launch.id);
+    setEditingData({
       ...launch,
-      id: `launch-${Date.now()}`,
-      issues: [],
-      conflictStatus: "ok",
+      planningStatus: normalizeStatus(launch.planningStatus),
     });
   }
 
-  function freeSlot(launch) {
-    const next = findNextFreeSlot(launch, launches, channels);
-
-    onUpdateLaunch({
-      ...launch,
-      startDate: next,
-      endDate: calculateEndDate(next, launch.duration),
+  function handleDuplicateSelected() {
+    if (!selectedLaunches.length) return;
+    selectedLaunches.forEach((launch, index) => {
+      onAddLaunch({
+        ...launch,
+        id: `launch-${Date.now()}-${index}`,
+        issues: [],
+        conflictStatus: "ok",
+      });
     });
   }
 
@@ -1558,6 +1561,10 @@ export default function LaunchesTab({
     });
 
     onBulkUpdateLaunches(nextLaunches);
+    const nextPeriodStart = getWeekStartFromDateString(nextLaunches[0]?.startDate);
+    if (nextPeriodStart) {
+      setPeriodStart(nextPeriodStart);
+    }
     clearSelection();
     setBulkEdit({
       planningStatus: "",
@@ -1795,6 +1802,18 @@ export default function LaunchesTab({
             Применить к выбранным
           </button>
 
+          {selectedLaunches.length === 1 && (
+            <button className="btn" onClick={handleEditSelected}>
+              Редактировать
+            </button>
+          )}
+
+          <button className="btn" onClick={handleDuplicateSelected}>
+            {selectedLaunches.length === 1
+              ? "Дублировать"
+              : "Дублировать выбранные"}
+          </button>
+
           <button className="btn" onClick={clearSelection}>
             Снять выбор
           </button>
@@ -1829,7 +1848,6 @@ export default function LaunchesTab({
                   <th>Статус</th>
                   <th>База комм.</th>
                   <th>Конфликт</th>
-                  <th>Действия</th>
                 </tr>
               </thead>
 
@@ -1838,19 +1856,26 @@ export default function LaunchesTab({
                 {editingId === "new" && editingData && (
                   <tr style={{ background: "#f8faff" }}>
                     <td />
-                    <td colSpan={12}>
+                    <td colSpan={11}>
                       <InlineForm
                         value={editingData}
                         channels={channels}
                         onChange={setEditingData}
                         onSave={() => {
-                          onAddLaunch({
+                          const newLaunch = {
                             ...editingData,
                             game: editingData.game || GAMES[0],
                             planningStatus: normalizeStatus(
                               editingData.planningStatus
                             ),
-                          });
+                          };
+                          onAddLaunch(newLaunch);
+                          const nextPeriodStart = getWeekStartFromDateString(
+                            newLaunch.startDate
+                          );
+                          if (nextPeriodStart) {
+                            setPeriodStart(nextPeriodStart);
+                          }
                           setEditingId(null);
                           setEditingData(null);
                         }}
@@ -1866,7 +1891,6 @@ export default function LaunchesTab({
 
                 {filtered.map((launch) => {
                   const isEditing = editingId === launch.id;
-                  const row = isEditing ? editingData : launch;
                   return (
                     <React.Fragment key={launch.id}>
                       {isEditing ? (
@@ -1881,19 +1905,26 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
-                          <td colSpan={12}>
+                          <td colSpan={11}>
                             <InlineForm
                               value={editingData}
                               channels={channels}
                               onChange={setEditingData}
                               onSave={() => {
-                                onUpdateLaunch({
+                                const updatedLaunch = {
                                   ...editingData,
                                   game: editingData.game || GAMES[0],
                                   planningStatus: normalizeStatus(
                                     editingData.planningStatus
                                   ),
-                                });
+                                };
+                                onUpdateLaunch(updatedLaunch);
+                                const nextPeriodStart = getWeekStartFromDateString(
+                                  updatedLaunch.startDate
+                                );
+                                if (nextPeriodStart) {
+                                  setPeriodStart(nextPeriodStart);
+                                }
                                 setEditingId(null);
                                 setEditingData(null);
                               }}
@@ -2016,39 +2047,6 @@ export default function LaunchesTab({
                                 Всё ок
                               </span>
                             )}
-                          </td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <div className="actions">
-                              <button
-                                className="btn-small"
-                                onClick={() => {
-                                  setEditingId(launch.id);
-                                  setEditingData({
-                                    ...launch,
-                                    planningStatus: normalizeStatus(
-                                      launch.planningStatus
-                                    ),
-                                  });
-                                }}
-                              >
-                                Ред.
-                              </button>
-                              <button
-                                className="btn-small"
-                                onClick={() => duplicate(launch)}
-                              >
-                                Дубль
-                              </button>
-                              <button
-                                className="btn-small btn-danger"
-                                onClick={() => {
-                                  if (window.confirm("Удалить?"))
-                                    onDeleteLaunch(launch.id);
-                                }}
-                              >
-                                Удалить
-                              </button>
-                            </div>
                           </td>
                         </tr>
                       )}

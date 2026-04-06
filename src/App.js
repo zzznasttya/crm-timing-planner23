@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import LaunchesTab from "./components/crm/LaunchesTab";
 import ChannelsTab from "./components/crm/ChannelsTab";
 import CalendarTab from "./components/crm/CalendarTab";
+import ChannelLoadTab from "./components/crm/ChannelLoadTab";
 import BusinessRequirementsTab from "./components/crm/BusinessRequirementsTab";
 import BKPTab from "./components/crm/BKPTab";
 import AssistantPanel from "./components/crm/AssistantPanel";
@@ -398,6 +399,7 @@ function AppInner() {
               ["launches", "Запуски"],
               ["channels", "Каналы"],
               ["calendar", "Календарь"],
+              ["channel-load", "Загрузка каналов"],
               ["business-requirements", "Бизнес-требования"],
               ["bkp", "БКП"],
             ].map(([id, label]) => (
@@ -439,6 +441,9 @@ function AppInner() {
           )}
           {activeTab === "calendar" && (
             <CalendarTab channels={channels} launches={launches} />
+          )}
+          {activeTab === "channel-load" && (
+            <ChannelLoadTab channels={channels} launches={launches} />
           )}
           {activeTab === "business-requirements" && (
             <BusinessRequirementsTab
