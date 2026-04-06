@@ -39,8 +39,27 @@ export function calculateEndDate(startDate, duration) {
   return start.toISOString().slice(0, 10);
 }
 
+export function getChannelTitle(channel = {}) {
+  return channel.title || channel.name || "";
+}
+
+export function getChannelSubtitle(channel = {}) {
+  return channel.subtitle || "";
+}
+
+export function getChannelDisplayName(channel = {}) {
+  const title = getChannelTitle(channel).trim();
+  const subtitle = getChannelSubtitle(channel).trim();
+
+  if (title && subtitle) return `${title} / ${subtitle}`;
+  if (title) return title;
+  if (subtitle) return subtitle;
+  return "";
+}
+
 export function getChannelName(channelId, channels = []) {
-  return channels.find((channel) => channel.id === channelId)?.name || "—";
+  const channel = channels.find((item) => item.id === channelId);
+  return getChannelDisplayName(channel) || "—";
 }
 
 export function calculateCRMPressure(dayString, launches = []) {
