@@ -3,6 +3,7 @@ import {
   getChannelName,
   calculateEndDate,
   detectConflicts,
+  getChannelDisplayName,
 } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
@@ -480,7 +481,7 @@ function renderAppliedRules(provenance) {
 
 function formatChannelOptionLabel(channel) {
   if (!channel) return "";
-  return channel.name;
+  return getChannelDisplayName(channel) || channel.id;
 }
 
 function LaunchForm({ value, channels, onChange }) {

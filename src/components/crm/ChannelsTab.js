@@ -1,9 +1,15 @@
 import React, { useMemo, useState } from "react";
+import {
+  getChannelDisplayName,
+  getChannelSubtitle,
+  getChannelTitle,
+} from "../../lib/crm-store";
 
 function createEmptyChannel() {
   return {
     id: `channel-${Date.now()}`,
-    name: "",
+    title: "",
+    subtitle: "",
     duration: 5,
     iosMinVersion: "All",
     iosMaxVersion: "All",
@@ -13,9 +19,14 @@ function createEmptyChannel() {
 }
 
 function normalizeChannelDraft(channel) {
+  const title = getChannelTitle(channel);
+  const subtitle = getChannelSubtitle(channel);
+
   return {
     id: channel.id || `channel-${Date.now()}`,
-    name: channel.name || "",
+    title,
+    subtitle,
+    name: getChannelDisplayName({ title, subtitle }) || channel.name || "",
     duration: Number(channel.duration) || 5,
     iosMinVersion: channel.iosMinVersion || "All",
     iosMaxVersion: channel.iosMaxVersion || "All",
@@ -44,11 +55,20 @@ function ChannelForm({ value, onChange }) {
   return (
     <div className="form-grid">
       <div className="full-row">
-        <label>Название канала</label>
+        <label>Заголовок канала</label>
         <input
-          value={value.name}
-          onChange={(e) => update("name", e.target.value)}
-          placeholder="Например: Баннер на главной"
+          value={value.title || ""}
+          onChange={(e) => update("title", e.target.value)}
+          placeholder="Например: Пуш"
+        />
+      </div>
+
+      <div className="full-row">
+        <label>Подзаголовок канала</label>
+        <input
+          value={value.subtitle || ""}
+          onChange={(e) => update("subtitle", e.target.value)}
+          placeholder="Например: победителям"
         />
       </div>
 
@@ -119,7 +139,9 @@ export default function ChannelsTab({
 
     return channels.filter((channel) => {
       const text = [
-        channel.name,
+        getChannelDisplayName(channel),
+        channel.title,
+        channel.subtitle,
         channel.id,
         channel.iosMinVersion,
         channel.iosMaxVersion,
@@ -173,7 +195,7 @@ export default function ChannelsTab({
 
   function handleDelete(channel) {
     const confirmed = window.confirm(
-      `Удалить канал "${channel.name || channel.id}"?`
+      `Удалить канал "${getChannelDisplayName(channel) || channel.id}"?`
     );
 
     if (!confirmed) return;
@@ -277,8 +299,22 @@ export default function ChannelsTab({
                       wordBreak: "break-word",
                     }}
                   >
-                    {channel.name || "Без названия"}
+                    {getChannelTitle(channel) || "Без названия"}
                   </div>
+
+                  {getChannelSubtitle(channel) && (
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#7c2d2d",
+                        marginTop: "2px",
+                        wordBreak: "break-word",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {getChannelSubtitle(channel)}
+                    </div>
+                  )}
 
                   <div
                     style={{

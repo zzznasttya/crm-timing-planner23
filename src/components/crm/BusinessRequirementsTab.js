@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "./Toast";
+import { getChannelDisplayName } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
   getCurrentWeekStart,
@@ -42,10 +43,10 @@ function getChannelNames(channelIds, channels) {
   if (!Array.isArray(channelIds) || !channelIds.length) return "—";
 
   return channelIds
-    .map(
-      (channelId) =>
-        channels.find((item) => item.id === channelId)?.name || channelId
-    )
+    .map((channelId) => {
+      const channel = channels.find((item) => item.id === channelId);
+      return getChannelDisplayName(channel) || channelId;
+    })
     .join(", ");
 }
 
@@ -226,7 +227,9 @@ function rowsFromWorksheet(sheet, XLSX) {
 }
 
 function findChannelIdByImportedName(channelName, channels) {
-  const byName = channels.find((channel) => channel.name === channelName);
+  const byName = channels.find(
+    (channel) => getChannelDisplayName(channel) === channelName
+  );
   if (byName) return byName.id;
 
   const byId = channels.find((channel) => channel.id === channelName);

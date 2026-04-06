@@ -4,6 +4,7 @@ import {
   normalizeAudience,
   normalizeRequirement,
 } from "../requirements-domain";
+import { getChannelDisplayName } from "../crm-store";
 
 const AUDIENCE_ALIASES = {
   акб: "АКБ",
@@ -81,7 +82,8 @@ function matchChannelIds(text, channels) {
   return channels
     .filter((channel) => {
       const id = String(channel.id || "").toLowerCase();
-      const name = String(channel.name || "").toLowerCase();
+      const name = String(getChannelDisplayName(channel) || channel.name || "")
+        .toLowerCase();
       return normalized.includes(id) || normalized.includes(name);
     })
     .map((channel) => channel.id);
