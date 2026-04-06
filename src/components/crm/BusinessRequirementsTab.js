@@ -8,7 +8,6 @@ import {
   AUDIENCE_OPTIONS,
   PRIORITY_OPTIONS,
   REQUIREMENT_STATUS_OPTIONS as STATUS_OPTIONS,
-  WEEK_OPTIONS,
   createEmptyRequirement,
   formatDate,
   getClosestWeekStart,
@@ -320,6 +319,9 @@ function RequirementInlineForm({
   onCancel,
   isNew,
 }) {
+  const selectedWeekStart = getClosestWeekStart(value.weekStart);
+  const selectedWeekRange = getWeekRange(selectedWeekStart);
+
   function upd(field, val) {
     const next = { ...value, [field]: val };
 
@@ -372,16 +374,59 @@ function RequirementInlineForm({
       >
         <div>
           <label>Неделя</label>
-          <select
-            value={getClosestWeekStart(value.weekStart)}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "6px" }}>
+            <button
+              type="button"
+              className="btn-small"
+              onClick={() =>
+                upd(
+                  "weekStart",
+                  formatDate(
+                    new Date(
+                      new Date(`${selectedWeekStart}T00:00:00`).setDate(
+                        new Date(`${selectedWeekStart}T00:00:00`).getDate() - 7
+                      )
+                    )
+                  )
+                )
+              }
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="btn-small"
+              onClick={() => upd("weekStart", formatDate(getMonday()))}
+            >
+              Сегодня
+            </button>
+            <button
+              type="button"
+              className="btn-small"
+              onClick={() =>
+                upd(
+                  "weekStart",
+                  formatDate(
+                    new Date(
+                      new Date(`${selectedWeekStart}T00:00:00`).setDate(
+                        new Date(`${selectedWeekStart}T00:00:00`).getDate() + 7
+                      )
+                    )
+                  )
+                )
+              }
+            >
+              →
+            </button>
+          </div>
+          <input
+            type="date"
+            value={selectedWeekStart}
             onChange={(e) => upd("weekStart", e.target.value)}
-          >
-            {WEEK_OPTIONS.map((o) => (
-              <option key={o.weekStart} value={o.weekStart}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          />
+          <div style={{ fontSize: "12px", color: "#71717a", marginTop: "6px" }}>
+            {selectedWeekRange.weekStart} — {selectedWeekRange.weekEnd}
+          </div>
         </div>
 
         <div>

@@ -5,6 +5,39 @@ import {
   normalizeRequirement,
 } from "../requirements-domain";
 
+const AUDIENCE_ALIASES = {
+  акб: "АКБ",
+  "а к б": "АКБ",
+  rg: "РГ",
+  рг: "РГ",
+  winners: "Победители",
+  победители: "Победители",
+  staff: "Стафф",
+  стафф: "Стафф",
+  "500к": "500 к",
+  "500 к": "500 к",
+  реестр: "Реестр",
+  "клиенты с план начислением кб": "Клиенты с план. начислением КБ",
+  "клиенты с план. начислением кб": "Клиенты с план. начислением КБ",
+  "клиенты с остатками кб": "Клиенты с остатками КБ",
+};
+
+const NUMBER_WORDS = {
+  один: 1,
+  одна: 1,
+  two: 2,
+  два: 2,
+  три: 3,
+  four: 4,
+  четыре: 4,
+  пять: 5,
+  шесть: 6,
+  семь: 7,
+  восемь: 8,
+  девять: 9,
+  десять: 10,
+};
+
 function createRule({
   type,
   scope = {},
@@ -37,6 +70,8 @@ function createRule({
 function normalizeText(text) {
   return String(text || "")
     .toLowerCase()
+    .replace(/[.,!?;:()]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -62,25 +97,21 @@ function matchGameNames(text, games = []) {
 
 function parseAudience(text) {
   const normalized = normalizeText(text);
-
-  const knownAudiences = [
-    "акб",
-    "победители",
-    "рг",
-    "стафф",
-    "500 к",
-    "реестр",
-    "клиенты с план. начислением кб",
-    "клиенты с остатками кб",
-  ];
-
-  const found = knownAudiences.find((item) => normalized.includes(item));
-  return found ? normalizeAudience(found) : "";
+  const found = Object.keys(AUDIENCE_ALIASES).find((item) =>
+    normalized.includes(item)
+  );
+  return found ? normalizeAudience(AUDIENCE_ALIASES[found]) : "";
 }
 
 function parseNumber(text) {
   const match = String(text || "").match(/(\d+)/);
-  return match ? Number(match[1]) : null;
+  if (match) return Number(match[1]);
+
+  const normalized = normalizeText(text);
+  const foundWord = Object.keys(NUMBER_WORDS).find((word) =>
+    normalized.includes(word)
+  );
+  return foundWord ? NUMBER_WORDS[foundWord] : null;
 }
 
 function getWeekRangeFromOffset(offsetWeeks = 0) {
@@ -103,6 +134,27 @@ function getWeekRangeFromOffset(offsetWeeks = 0) {
   return {
     weekStart: toValue(monday),
     weekEnd: toValue(sunday),
+  };
+}
+
+function toDateValue(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getFixedDateWindow(offsetDays = 0) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + offsetDays);
+  const value = toDateValue(date);
+
+  return {
+    hasFixedDates: "yes",
+    fixedStartDate: value,
+    fixedEndDate: value,
+    source: "relative-fixed",
   };
 }
 
@@ -143,6 +195,49 @@ function extractDateWindow(text) {
     };
   }
 
+  if (
+    normalized.includes("сегодня") ||
+    normalized.includes("на сегодня")
+  ) {
+    return getFixedDateWindow(0);
+  }
+
+  if (
+    normalized.includes("завтра") ||
+    normalized.includes("на завтра")
+  ) {
+    return getFixedDateWindow(1);
+  }
+
+  if (
+    normalized.includes("послезавтра") ||
+    normalized.includes("на послезавтра")
+  ) {
+    return getFixedDateWindow(2);
+  }
+
+  if (
+    normalized.includes("в начале недели") ||
+    normalized.includes("поближе к началу недели")
+  ) {
+    return {
+      hasFixedDates: "no",
+      ...getWeekRangeFromOffset(0),
+      source: "relative-start",
+    };
+  }
+
+  if (
+    normalized.includes("в конце недели") ||
+    normalized.includes("ближе к концу недели")
+  ) {
+    return {
+      hasFixedDates: "no",
+      ...getWeekRangeFromOffset(0),
+      source: "relative-end",
+    };
+  }
+
   return {
     hasFixedDates: "no",
     ...getWeekRangeFromOffset(0),
@@ -155,12 +250,27 @@ function inferPriority(text) {
   if (
     normalized.includes("срочно") ||
     normalized.includes("важно") ||
-    normalized.includes("приоритетно")
+    normalized.includes("приоритетно") ||
+    normalized.includes("критично") ||
+    normalized.includes("как можно скорее")
   ) {
     return "1";
   }
+  if (
+    normalized.includes("высокий приоритет") ||
+    normalized.includes("повыше приоритет")
+  ) {
+    return "2";
+  }
   if (normalized.includes("низкий приоритет")) {
     return "5";
+  }
+  if (
+    normalized.includes("можно позже") ||
+    normalized.includes("не срочно") ||
+    normalized.includes("спокойно")
+  ) {
+    return "4";
   }
   return "3";
 }
@@ -171,7 +281,10 @@ function extractIntent(text) {
   if (
     normalized.includes("почему") ||
     normalized.includes("объясни") ||
-    normalized.includes("why")
+    normalized.includes("why") ||
+    normalized.includes("что учел") ||
+    normalized.includes("что учёл") ||
+    normalized.includes("поясни")
   ) {
     return "question";
   }
@@ -179,7 +292,9 @@ function extractIntent(text) {
   if (
     normalized.includes("сдвинь") ||
     normalized.includes("перенеси") ||
-    normalized.includes("измени")
+    normalized.includes("измени") ||
+    normalized.includes("подвинь") ||
+    normalized.includes("замени")
   ) {
     return "update";
   }
@@ -189,7 +304,12 @@ function extractIntent(text) {
     normalized.includes("запланируй") ||
     normalized.includes("нужен запуск") ||
     normalized.includes("нужно") ||
-    normalized.includes("добавь")
+    normalized.includes("добавь") ||
+    normalized.includes("давай поставим") ||
+    normalized.includes("хочу") ||
+    normalized.includes("нужно разместить") ||
+    normalized.includes("нужно поставить") ||
+    normalized.includes("можно поставить")
   ) {
     return "planning_request";
   }
@@ -228,6 +348,12 @@ function buildRequirementAction({
     "добавь запуск",
     "нужно размещение",
     "собери тайминг",
+    "давай поставим",
+    "нужно поставить",
+    "нужно запланировать",
+    "можно поставить",
+    "хочу запуск",
+    "хочу размещение",
   ];
 
   if (!launchWords.some((word) => normalized.includes(word))) {
@@ -278,6 +404,9 @@ function extractChannelExclusion(text, channels, messageId) {
     "не использовать",
     "избегать",
     "исключить",
+    "убрать",
+    "не ставить",
+    "не трогать",
     "never use",
     "avoid",
     "exclude",
@@ -317,6 +446,9 @@ function extractChannelPriority(text, channels, games, messageId) {
     "предпочт",
     "приоритет",
     "лучше использовать",
+    "лучше",
+    "предпочесть",
+    "ставить через",
     "prefer",
     "prioritize",
     "priority",
@@ -357,7 +489,14 @@ function extractChannelPriority(text, channels, games, messageId) {
 function extractDailyLimit(text, messageId) {
   const normalized = normalizeText(text);
 
-  const patterns = ["не больше", "макс", "max", "no more than"];
+  const patterns = [
+    "не больше",
+    "макс",
+    "максимум",
+    "не более",
+    "max",
+    "no more than",
+  ];
   const launchWords = ["запуск", "запусков", "размещ", "launch", "placement"];
 
   const matched =
@@ -388,6 +527,8 @@ function extractHardDateBinding(text, channels, games, messageId) {
   const hasBindingWords =
     normalized.includes("жестк") ||
     normalized.includes("привяз") ||
+    normalized.includes("строго") ||
+    normalized.includes("обязательно") ||
     normalized.includes("fixed date") ||
     normalized.includes("hard date");
 
@@ -501,6 +642,12 @@ export function extractAssistantActions({
     intent,
     rules,
     actions,
+    understanding: {
+      audience: parseAudience(text),
+      channelIds: matchChannelIds(text, channels),
+      games: matchGameNames(text, games),
+      dateWindow: extractDateWindow(text),
+    },
     shouldRebuildSchedule:
       actions.some((action) => action.type === "create_requirement") ||
       rules.length > 0,

@@ -71,11 +71,20 @@ function daysBetween(from, to) {
   return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
 }
 
+function isWinnersAudience(value) {
+  return normalizeAudience(value || "") === "победители";
+}
+
 function getNearestGapDays(candidate, launches) {
+  if (isWinnersAudience(candidate.audience || "")) {
+    return null;
+  }
+
   let nearest = null;
 
   launches.forEach((launch) => {
     if (launch.game !== candidate.game) return;
+    if (isWinnersAudience(launch.audience || "")) return;
     if (
       normalizeAudience(launch.audience || "") !==
       normalizeAudience(candidate.audience || "")
@@ -115,6 +124,72 @@ function describePressure(score) {
   return "высокая нагрузка";
 }
 
+function normalizeAssistantText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function deriveAssistantPlanningDirectives(assistantContext = {}) {
+  const messages = Array.isArray(assistantContext.messages)
+    ? assistantContext.messages
+    : [];
+  const recentUserText = messages
+    .filter((message) => message.role === "user")
+    .slice(-8)
+    .map((message) => normalizeAssistantText(message.text))
+    .join(" ");
+
+  const directives = {
+    densityMode: "balanced",
+    timingBias: "balanced",
+    spacingImportance: "balanced",
+    notes: [],
+  };
+
+  if (
+    recentUserText.includes("плотн") ||
+    recentUserText.includes("агрессив") ||
+    recentUserText.includes("компакт")
+  ) {
+    directives.densityMode = "aggressive";
+    directives.notes.push("Ассистент учёл запрос на более плотный тайминг.");
+  } else if (
+    recentUserText.includes("аккурат") ||
+    recentUserText.includes("консерват") ||
+    recentUserText.includes("осторож") ||
+    recentUserText.includes("разнес")
+  ) {
+    directives.densityMode = "conservative";
+    directives.notes.push("Ассистент учёл запрос на более аккуратное размещение.");
+  }
+
+  if (
+    recentUserText.includes("пораньше") ||
+    recentUserText.includes("раньше") ||
+    recentUserText.includes("в начале")
+  ) {
+    directives.timingBias = "early";
+    directives.notes.push("Ассистент учёл пожелание ставить запуски раньше.");
+  } else if (
+    recentUserText.includes("попозже") ||
+    recentUserText.includes("позже") ||
+    recentUserText.includes("в конце")
+  ) {
+    directives.timingBias = "late";
+    directives.notes.push("Ассистент учёл пожелание сдвигать запуски ближе к концу окна.");
+  }
+
+  if (
+    recentUserText.includes("равномер") ||
+    recentUserText.includes("разнести") ||
+    recentUserText.includes("без скученности")
+  ) {
+    directives.spacingImportance = "high";
+    directives.notes.push("Ассистент учёл пожелание распределять запуски равномернее.");
+  }
+
+  return directives;
+}
+
 function scoreCandidate({
   requirement,
   channel,
@@ -124,6 +199,7 @@ function scoreCandidate({
   existing,
   compiled,
   maxPerDay,
+  assistantDirectives,
 }) {
   const endDate = calculateEndDate(candidate.startDate, candidate.duration);
   if (!endDate) return null;
@@ -160,18 +236,43 @@ function scoreCandidate({
     : 0;
 
   const priorityTier = getPriorityTier(requirement.priority);
-  const earlyPlacementScore =
-    priorityTier === "high"
-      ? (1 - normalizedPosition) * 18
-      : priorityTier === "medium"
-      ? (1 - Math.abs(normalizedPosition - 0.35)) * 10
-      : normalizedPosition * 8;
+  let placementPreferenceScore;
+  if (assistantDirectives?.timingBias === "early") {
+    placementPreferenceScore = (1 - normalizedPosition) * 16;
+  } else if (assistantDirectives?.timingBias === "late") {
+    placementPreferenceScore = normalizedPosition * 16;
+  } else {
+    placementPreferenceScore =
+      priorityTier === "high"
+        ? (1 - normalizedPosition) * 18
+        : priorityTier === "medium"
+        ? (1 - Math.abs(normalizedPosition - 0.35)) * 10
+        : normalizedPosition * 8;
+  }
 
-  const pressureScore = Math.max(0, 14 - startDayPressure * 4);
+  const pressurePenaltyMultiplier =
+    assistantDirectives?.densityMode === "aggressive"
+      ? 2
+      : assistantDirectives?.densityMode === "conservative"
+      ? 5
+      : 4;
+
+  const pressureScore = Math.max(
+    0,
+    14 - startDayPressure * pressurePenaltyMultiplier
+  );
 
   const sameGameGap = getNearestGapDays(candidate, existing);
+  const spacingMultiplier =
+    assistantDirectives?.spacingImportance === "high"
+      ? 2.2
+      : assistantDirectives?.densityMode === "aggressive"
+      ? 1
+      : 1.5;
   const spacingScore =
-    sameGameGap == null ? 8 : Math.min(16, Math.max(0, sameGameGap - 2) * 1.5);
+    sameGameGap == null
+      ? 8
+      : Math.min(16, Math.max(0, sameGameGap - 2) * spacingMultiplier);
 
   const assistantScore = evaluateAssistantScoreAdjustments(candidate, compiled);
 
@@ -192,9 +293,9 @@ function scoreCandidate({
     ),
     buildBreakdownItem(
       "Позиция в окне",
-      earlyPlacementScore,
+      placementPreferenceScore,
       `Слот находится на ${windowIndex + 1}-й позиции в окне ${windowStart} - ${windowEnd}.`,
-      earlyPlacementScore >= 10 ? "positive" : "neutral"
+      placementPreferenceScore >= 10 ? "positive" : "neutral"
     ),
     buildBreakdownItem(
       "Разнос по игре",
@@ -219,6 +320,17 @@ function scoreCandidate({
     );
   }
 
+  if (assistantDirectives?.notes?.length) {
+    breakdown.push(
+      buildBreakdownItem(
+        "Пожелания ассистенту",
+        6,
+        assistantDirectives.notes.join(" "),
+        "positive"
+      )
+    );
+  }
+
   const totalScore = breakdown.reduce((sum, item) => sum + item.value, 0);
 
   return {
@@ -239,6 +351,7 @@ function pickBestSlot({
   existing,
   compiled,
   maxPerDay,
+  assistantDirectives,
 }) {
   const dates = dateRange(windowStart, windowEnd);
   let best = null;
@@ -265,6 +378,7 @@ function pickBestSlot({
       existing,
       compiled,
       maxPerDay,
+      assistantDirectives,
     });
 
     if (!scored) continue;
@@ -343,8 +457,10 @@ export function buildSchedule({
   channels = [],
   rules = [],
   existingLaunches = [],
+  assistantContext = {},
 }) {
   const compiled = compileAssistantRules(rules);
+  const assistantDirectives = deriveAssistantPlanningDirectives(assistantContext);
   const maxPerDay = compiled.limitOverrides?.daily?.maxLaunchesPerDay ?? null;
   const pool = [...existingLaunches];
   const proposed = [];
@@ -373,7 +489,7 @@ export function buildSchedule({
       continue;
     }
 
-    let targetChannels = channels.filter((channel) => channel.status === "active");
+    let targetChannels = [...channels];
     if (Array.isArray(req.channelIds) && req.channelIds.length > 0) {
       targetChannels = targetChannels.filter((channel) =>
         req.channelIds.includes(channel.id)
@@ -383,10 +499,13 @@ export function buildSchedule({
     if (targetChannels.length === 0) {
       skipped.push({
         req,
-        reason: "Нет активных каналов для этого требования",
+        reason: "Нет каналов для этого требования",
       });
       continue;
     }
+
+    let bestLaunch = null;
+    const channelAttempts = [];
 
     for (const channel of targetChannels) {
       const candidate = {
@@ -401,11 +520,11 @@ export function buildSchedule({
 
       const hardCheck = evaluateAssistantHardRules(candidate, compiled);
       if (hardCheck.blocked) {
-        skipped.push({
-          req,
+        channelAttempts.push({
           channelId: channel.id,
           reason: "Заблокировано правилом ассистента",
           details: hardCheck.hits,
+          blocked: true,
         });
         continue;
       }
@@ -422,11 +541,11 @@ export function buildSchedule({
         existing: pool,
         compiled,
         maxPerDay,
+        assistantDirectives,
       });
 
       if (!bestSlot) {
-        skipped.push({
-          req,
+        channelAttempts.push({
           channelId: channel.id,
           reason: "Нет подходящего слота в окне дат",
         });
@@ -464,15 +583,42 @@ export function buildSchedule({
           alternatives: bestSlot.alternatives,
           windowStart: effectiveStart,
           windowEnd: effectiveEnd,
+          channelId: channel.id,
+          assistantDirectives,
         },
       };
 
       const issues = detectConflicts(newLaunch, pool, channels);
       newLaunch.issues = issues;
       newLaunch.conflictStatus = issues.length ? "conflict" : "ok";
-      proposed.push(newLaunch);
-      pool.push(newLaunch);
+      channelAttempts.push({
+        channelId: channel.id,
+        reason: "Канал подходит",
+        score: bestSlot.score,
+        launch: newLaunch,
+      });
+
+      if (!bestLaunch || Number(newLaunch._score || 0) > Number(bestLaunch._score || 0)) {
+        bestLaunch = newLaunch;
+      }
     }
+
+    if (!bestLaunch) {
+      skipped.push({
+        req,
+        reason: channelAttempts[0]?.reason || "Нет подходящего канала или слота",
+        details: channelAttempts,
+      });
+      continue;
+    }
+
+    bestLaunch._planningMeta = {
+      ...bestLaunch._planningMeta,
+      channelAttempts,
+    };
+
+    proposed.push(bestLaunch);
+    pool.push(bestLaunch);
   }
 
   proposed.sort((a, b) => {
@@ -486,10 +632,6 @@ export function buildSchedule({
 
 export function recalcConflicts(launches, channels) {
   return recalculateAllConflicts(launches, channels);
-}
-
-export function generateAIRecommendations() {
-  return [];
 }
 
 export function buildFullScheduleDraft({ launches }) {

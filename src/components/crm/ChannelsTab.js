@@ -9,7 +9,6 @@ function createEmptyChannel() {
     iosMaxVersion: "All",
     androidMinVersion: "All",
     androidMaxVersion: "All",
-    status: "active",
   };
 }
 
@@ -22,25 +21,6 @@ function normalizeChannelDraft(channel) {
     iosMaxVersion: channel.iosMaxVersion || "All",
     androidMinVersion: channel.androidMinVersion || "All",
     androidMaxVersion: channel.androidMaxVersion || "All",
-    status: channel.status || "active",
-  };
-}
-
-function statusMeta(status) {
-  if (status === "active") {
-    return {
-      label: "active",
-      background: "#dcfce7",
-      color: "#166534",
-      border: "#bbf7d0",
-    };
-  }
-
-  return {
-    label: "inactive",
-    background: "#fee2e2",
-    color: "#b91c1c",
-    border: "#fecaca",
   };
 }
 
@@ -80,17 +60,6 @@ function ChannelForm({ value, onChange }) {
           value={value.duration}
           onChange={(e) => update("duration", e.target.value)}
         />
-      </div>
-
-      <div>
-        <label>Статус</label>
-        <select
-          value={value.status}
-          onChange={(e) => update("status", e.target.value)}
-        >
-          <option value="active">active</option>
-          <option value="inactive">inactive</option>
-        </select>
       </div>
 
       <div>
@@ -152,7 +121,6 @@ export default function ChannelsTab({
       const text = [
         channel.name,
         channel.id,
-        channel.status,
         channel.iosMinVersion,
         channel.iosMaxVersion,
         channel.androidMinVersion,
@@ -167,8 +135,6 @@ export default function ChannelsTab({
 
   const stats = useMemo(() => {
     const total = channels.length;
-    const active = channels.filter((item) => item.status === "active").length;
-    const inactive = total - active;
     const avgDuration = total
       ? (
           channels.reduce(
@@ -180,8 +146,6 @@ export default function ChannelsTab({
 
     return {
       total,
-      active,
-      inactive,
       avgDuration,
     };
   }, [channels]);
@@ -235,16 +199,20 @@ export default function ChannelsTab({
         </div>
 
         <div className="section-card" style={{ margin: 0 }}>
-          <div className="muted small">Active</div>
+          <div className="muted small">Мин. длительность</div>
           <div style={{ fontSize: "24px", fontWeight: 800, marginTop: "4px" }}>
-            {stats.active}
+            {channels.length
+              ? Math.min(...channels.map((item) => Number(item.duration) || 0))
+              : 0}
           </div>
         </div>
 
         <div className="section-card" style={{ margin: 0 }}>
-          <div className="muted small">Inactive</div>
+          <div className="muted small">Макс. длительность</div>
           <div style={{ fontSize: "24px", fontWeight: 800, marginTop: "4px" }}>
-            {stats.inactive}
+            {channels.length
+              ? Math.max(...channels.map((item) => Number(item.duration) || 0))
+              : 0}
           </div>
         </div>
 
@@ -259,7 +227,7 @@ export default function ChannelsTab({
       <div className="toolbar">
         <div className="toolbar-left" style={{ flex: 1 }}>
           <input
-            placeholder="Поиск по названию, id, версии, статусу"
+            placeholder="Поиск по названию, id и версиям"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ maxWidth: "420px" }}
@@ -281,8 +249,6 @@ export default function ChannelsTab({
         }}
       >
         {filteredChannels.map((channel) => {
-          const meta = statusMeta(channel.status);
-
           return (
             <div
               key={channel.id}
@@ -326,20 +292,6 @@ export default function ChannelsTab({
                   </div>
                 </div>
 
-                <span
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    background: meta.background,
-                    color: meta.color,
-                    border: `1px solid ${meta.border}`,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {meta.label}
-                </span>
               </div>
 
               <div

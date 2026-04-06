@@ -32,15 +32,81 @@ function ruleTypeLabel(type) {
   return type;
 }
 
-function buildAssistantAnswer({ intent, newRules, actions, scheduleDraft }) {
+function formatWindow(dateWindow) {
+  if (!dateWindow) return "";
+
+  if (dateWindow.hasFixedDates === "yes") {
+    const start = dateWindow.fixedStartDate || "";
+    const end = dateWindow.fixedEndDate || start;
+    if (!start) return "";
+    return start === end ? start : `${start} - ${end}`;
+  }
+
+  if (dateWindow.weekStart && dateWindow.weekEnd) {
+    return `${dateWindow.weekStart} - ${dateWindow.weekEnd}`;
+  }
+
+  return "";
+}
+
+function buildUnderstandingSummary(understanding, actions) {
+  const requirementAction = actions.find(
+    (action) => action.type === "create_requirement"
+  );
+  const requirement = requirementAction?.payload?.requirement;
+  const parts = [];
+
+  if (requirement?.game) {
+    parts.push(`игра: ${requirement.game}`);
+  } else if (understanding?.games?.[0]) {
+    parts.push(`игра: ${understanding.games[0]}`);
+  }
+
+  if (requirement?.audience || understanding?.audience) {
+    parts.push(`аудитория: ${requirement?.audience || understanding.audience}`);
+  }
+
+  const channelCount = Array.isArray(requirement?.channelIds)
+    ? requirement.channelIds.length
+    : Array.isArray(understanding?.channelIds)
+      ? understanding.channelIds.length
+      : 0;
+
+  if (channelCount > 0) {
+    parts.push(
+      channelCount === 1
+        ? "канал указан явно"
+        : `каналов указано: ${channelCount}`
+    );
+  }
+
+  const windowLabel = formatWindow(
+    requirementAction?.payload?.requirement || understanding?.dateWindow
+  );
+  if (windowLabel) {
+    parts.push(`окно: ${windowLabel}`);
+  }
+
+  return parts;
+}
+
+function buildAssistantAnswer({
+  intent,
+  newRules,
+  actions,
+  scheduleDraft,
+  understanding,
+}) {
   const parts = [];
 
   if (intent === "planning_request") {
-    parts.push("Я распознал запрос на построение тайминга.");
+    parts.push("Я распознал запрос на планирование.");
   } else if (intent === "rule") {
     parts.push("Я распознал новое ограничение для планировщика.");
   } else if (intent === "question") {
     parts.push("Я распознал запрос на объяснение или проверку тайминга.");
+  } else if (intent === "update") {
+    parts.push("Я распознал запрос на изменение уже существующего плана.");
   }
 
   if (actions.length > 0) {
@@ -50,6 +116,11 @@ function buildAssistantAnswer({ intent, newRules, actions, scheduleDraft }) {
     if (requirementCount > 0) {
       parts.push(`Создал требований: ${requirementCount}.`);
     }
+  }
+
+  const understandingParts = buildUnderstandingSummary(understanding, actions);
+  if (understandingParts.length > 0) {
+    parts.push(`Понял так: ${understandingParts.join(", ")}.`);
   }
 
   if (newRules.length > 0) {
@@ -152,6 +223,7 @@ export default function AssistantPanel({
         newRules: proposedRules,
         actions: interpreted.actions,
         scheduleDraft: automationResult?.scheduleDraft || null,
+        understanding: interpreted.understanding,
       }),
       createdAt: new Date().toISOString(),
       extractedRuleIds: proposedRules.map((rule) => rule.id),
@@ -214,8 +286,9 @@ export default function AssistantPanel({
         >
           {messages.length === 0 && (
             <div className="muted">
-              Напиши правило вроде: «не использовать пуш для АКБ», «баннер
-              приоритетнее попапа для Суперигры», «не больше 3 запусков в день».
+              Можно писать и командами, и более живыми фразами: «не ставь пуш
+              для АКБ», «давай на следующей неделе баннер для Матрёшек»,
+              «сделай аккуратнее и не больше трёх запусков в день».
             </div>
           )}
 
@@ -262,7 +335,7 @@ export default function AssistantPanel({
             rows="3"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Напиши правило или ограничение для планировщика"
+            placeholder="Напиши ограничение, пожелание или просьбу к таймингу"
             style={{
               flex: 1,
               border: "1px solid #d1d5db",

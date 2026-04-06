@@ -171,10 +171,9 @@ function AppInner() {
       return { importedCount: 0, schedule: null };
     }
 
-    const activeChannels = channels.filter((channel) => channel.status === "active");
-    if (activeChannels.length === 0) {
+    if (channels.length === 0) {
       toast(
-        "Требования импортированы, но для генерации тайминга нужен хотя бы один active-канал",
+        "Требования импортированы, но для генерации тайминга нужен хотя бы один канал",
         "warn"
       );
       return { importedCount: nextRequirements.length, schedule: null };
@@ -185,6 +184,7 @@ function AppInner() {
       channels,
       rules,
       existingLaunches: launches,
+      assistantContext: { messages, rules, preferences },
     });
 
     setScheduleDraft(schedule);
@@ -246,6 +246,7 @@ function AppInner() {
       channels,
       rules,
       existingLaunches: launches,
+      assistantContext: { messages, rules, preferences },
     });
     if (result.proposed.length === 0) {
       toast(
@@ -310,6 +311,7 @@ function AppInner() {
         channels,
         rules: nextRules,
         existingLaunches: launches,
+        assistantContext: { messages, rules: nextRules, preferences },
       });
       setScheduleDraft(nextDraft);
       if (nextDraft.proposed.length > 0) {
@@ -333,24 +335,6 @@ function AppInner() {
     setScheduleDraft(null);
     setActiveTab("launches");
     toast("Добавлено " + accepted.length + " запусков");
-  }
-
-  function handleApplyProposals(proposals) {
-    if (!Array.isArray(proposals)) return;
-    proposals.forEach((p) => {
-      if (p.type === "create_new") {
-        handleAddLaunch({
-          id: "l-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
-          planningStatus: "бэклог",
-          issues: [],
-          conflictStatus: "ok",
-          campaignType: "CRM акция",
-          manager: "",
-          ...p.suggested,
-          game: p.game,
-        });
-      }
-    });
   }
 
   function handleApplyDraft(actions) {
@@ -457,7 +441,6 @@ function AppInner() {
               onBulkUpdateLaunches={handleBulkUpdateLaunches}
               onBulkDeleteLaunches={handleBulkDeleteLaunches}
               onDeleteLaunch={handleDeleteLaunch}
-              onApplyProposals={handleApplyProposals}
               onApplyDraft={handleApplyDraft}
               onImportLaunches={handleImportLaunches}
               onAutoResolve={handleResolveConflicts}

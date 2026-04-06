@@ -317,7 +317,6 @@ async function importLaunchesFromFile(file, channels) {
   });
 }
 import {
-  generateAIRecommendations,
   buildFullScheduleDraft,
 } from "../../lib/planner-core";
 
@@ -476,9 +475,7 @@ function renderAppliedRules(provenance) {
 
 function formatChannelOptionLabel(channel) {
   if (!channel) return "";
-  return channel.status === "active"
-    ? channel.name
-    : `${channel.name} (inactive)`;
+  return channel.name;
 }
 
 function LaunchForm({ value, channels, onChange }) {
@@ -657,210 +654,6 @@ function LaunchForm({ value, channels, onChange }) {
           value={value.comment || ""}
           onChange={(e) => update("comment", e.target.value)}
         />
-      </div>
-    </div>
-  );
-}
-
-function RecommendationsPanel({
-  recommendations,
-  onClose,
-  onToggleSelect,
-  onApplyOne,
-  onRejectOne,
-  onApplySelected,
-  onRejectAll,
-}) {
-  const selectedCount = recommendations.filter(
-    (item) => item.isSelected
-  ).length;
-
-  return (
-    <div
-      style={{
-        width: "400px",
-        minWidth: "400px",
-        borderLeft: "1px solid #e5e7eb",
-        paddingLeft: "16px",
-      }}
-    >
-      <div style={{ position: "sticky", top: 0 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "18px", fontWeight: 700 }}>
-              Рекомендации
-            </div>
-            <div
-              style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}
-            >
-              С учётом бизнес-требований и памяти ассистента
-            </div>
-          </div>
-
-          <button className="btn-small" onClick={onClose}>
-            Закрыть
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginBottom: "14px",
-          }}
-        >
-          <button
-            className="btn-small"
-            onClick={onApplySelected}
-            disabled={!selectedCount}
-            style={{ opacity: selectedCount ? 1 : 0.5 }}
-          >
-            Применить выбранные
-          </button>
-
-          <button className="btn-small btn-danger" onClick={onRejectAll}>
-            Очистить
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "12px",
-            maxHeight: "70vh",
-            overflow: "auto",
-            paddingRight: "4px",
-          }}
-        >
-          {recommendations.map((recommendation) => (
-            <div
-              key={recommendation.id}
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: "16px",
-                padding: "14px",
-                background: "#fff",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "10px",
-                  marginBottom: "10px",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={recommendation.isSelected}
-                  onChange={() => onToggleSelect(recommendation.id)}
-                  style={{ marginTop: "3px" }}
-                />
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: "15px" }}>
-                    {recommendation.title}
-                  </div>
-                  <div
-                    style={{
-                      color: "#6b7280",
-                      fontSize: "13px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {recommendation.game}
-                    {recommendation.audience
-                      ? ` · ${recommendation.audience}`
-                      : ""}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontSize: "13px",
-                  lineHeight: 1.5,
-                  marginBottom: "10px",
-                }}
-              >
-                {recommendation.current ? (
-                  <div>
-                    <div>
-                      <strong>Было:</strong>{" "}
-                      {recommendation.current.channelName} ·{" "}
-                      {formatRuDate(recommendation.current.startDate)} ·{" "}
-                      {recommendation.current.duration} дн.
-                    </div>
-                    <div>
-                      <strong>Предлагается:</strong>{" "}
-                      {recommendation.suggested.channelName} ·{" "}
-                      {formatRuDate(recommendation.suggested.startDate)} ·{" "}
-                      {recommendation.suggested.duration} дн.
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <strong>Создать:</strong>{" "}
-                    {recommendation.suggested.channelName} ·{" "}
-                    {formatRuDate(recommendation.suggested.startDate)} ·{" "}
-                    {recommendation.suggested.duration} дн.
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#374151",
-                  background: "#f9fafb",
-                  borderRadius: "12px",
-                  padding: "10px",
-                  marginBottom: "10px",
-                }}
-              >
-                <div style={{ fontWeight: 600, marginBottom: "6px" }}>
-                  Почему
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "18px" }}>
-                  {(recommendation.reasons || []).map((reason, index) => (
-                    <li key={index}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {renderAppliedRules(recommendation.provenance)}
-
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <button
-                  className="btn-small"
-                  onClick={() => onApplyOne(recommendation.id)}
-                >
-                  Применить
-                </button>
-                <button
-                  className="btn-small btn-danger"
-                  onClick={() => onRejectOne(recommendation.id)}
-                >
-                  Отклонить
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {!recommendations.length && (
-            <div className="muted">Подходящих рекомендаций нет</div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -1250,7 +1043,6 @@ export default function LaunchesTab({
   onUpdateLaunch,
   onBulkUpdateLaunches,
   onBulkDeleteLaunches,
-  onApplyProposals,
   onApplyDraft,
   onImportLaunches,
   onDeleteLaunch,
@@ -1262,9 +1054,7 @@ export default function LaunchesTab({
   const [search, setSearch] = useState("");
   const [calendarMode, setCalendarMode] = useState("2w");
   const [periodStart, setPeriodStart] = useState(getCurrentWeekStart);
-  const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
   const [isDraftOpen, setIsDraftOpen] = useState(false);
-  const [recommendations, setRecommendations] = useState([]);
   const [scheduleDraft, setScheduleDraft] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [lastSelectedId, setLastSelectedId] = useState(null);
@@ -1761,22 +1551,6 @@ export default function LaunchesTab({
     }
   }
 
-  function handleGenerateRecommendations() {
-    const nextRecommendations = generateAIRecommendations({
-      launches,
-      channels,
-      assistantContext,
-    }).map((item) => ({
-      ...item,
-      isSelected:
-        assistantContext?.preferences?.autoSelectRecommendations !== false,
-    }));
-
-    setRecommendations(nextRecommendations);
-    setIsRecommendationsOpen(true);
-    setIsDraftOpen(false);
-  }
-
   function handleBuildDraft() {
     const nextDraft = buildFullScheduleDraft({
       launches,
@@ -1786,40 +1560,6 @@ export default function LaunchesTab({
 
     setScheduleDraft(nextDraft);
     setIsDraftOpen(true);
-    setIsRecommendationsOpen(false);
-  }
-
-  function handleToggleRecommendationSelection(id) {
-    setRecommendations((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, isSelected: !item.isSelected } : item
-      )
-    );
-  }
-
-  function handleApplyOneRecommendation(id) {
-    const recommendation = recommendations.find((item) => item.id === id);
-    if (!recommendation) return;
-
-    onApplyProposals([recommendation]);
-    setRecommendations((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function handleRejectOneRecommendation(id) {
-    setRecommendations((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function handleApplySelectedRecommendations() {
-    const selected = recommendations.filter((item) => item.isSelected);
-    if (!selected.length) return;
-
-    onApplyProposals(selected);
-    setRecommendations((prev) => prev.filter((item) => !item.isSelected));
-  }
-
-  function handleRejectAllRecommendations() {
-    setRecommendations([]);
-    setIsRecommendationsOpen(false);
   }
 
   function handleApplyDraft() {
@@ -1841,13 +1581,6 @@ export default function LaunchesTab({
         </div>
 
         <div className="toolbar-right">
-          <button
-            className="btn btn-primary"
-            onClick={handleGenerateRecommendations}
-          >
-            Рекомендации
-          </button>
-
           {ENABLE_LAUNCH_DRAFT_BUTTON && (
             <button className="btn btn-primary" onClick={handleBuildDraft}>
               Черновик изменений
@@ -2240,18 +1973,6 @@ export default function LaunchesTab({
             </table>
           </div>
         </div>
-
-        {isRecommendationsOpen && (
-          <RecommendationsPanel
-            recommendations={recommendations}
-            onClose={() => setIsRecommendationsOpen(false)}
-            onToggleSelect={handleToggleRecommendationSelection}
-            onApplyOne={handleApplyOneRecommendation}
-            onRejectOne={handleRejectOneRecommendation}
-            onApplySelected={handleApplySelectedRecommendations}
-            onRejectAll={handleRejectAllRecommendations}
-          />
-        )}
 
         {isDraftOpen && scheduleDraft && (
           <DraftPanel

@@ -9,6 +9,10 @@ const DEFAULT_PREFERENCES = {
 
 export const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
 
+function isWinnersAudience(value) {
+  return normalizeAudience(value || "") === "победители";
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -52,6 +56,7 @@ export function calculateCRMPressure(dayString, launches = []) {
 
 export function detectConflicts(launch, launches = [], channels = []) {
   const issues = [];
+  const currentAudience = normalizeAudience(launch.audience || "");
 
   if (!launch.channelId) {
     issues.push("Не выбран канал");
@@ -65,9 +70,8 @@ export function detectConflicts(launch, launches = [], channels = []) {
     issues.push("Дата окончания раньше даты старта");
   }
 
-  const channel = channels.find((item) => item.id === launch.channelId);
-  if (channel?.status && channel.status !== "active") {
-    issues.push("Канал неактивен");
+  if (isWinnersAudience(currentAudience)) {
+    return issues;
   }
 
   const overlaps = launches.filter((item) => {
@@ -82,8 +86,8 @@ export function detectConflicts(launch, launches = [], channels = []) {
 
     if (item.channelId !== launch.channelId) return false;
 
-    const currentAudience = normalizeAudience(launch.audience || "");
     const otherAudience = normalizeAudience(item.audience || "");
+    if (isWinnersAudience(otherAudience)) return false;
     return !currentAudience || !otherAudience || currentAudience === otherAudience;
   });
 
