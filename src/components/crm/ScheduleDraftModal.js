@@ -172,6 +172,12 @@ export default function ScheduleDraftModal({
       const nextLaunches = prev.map((launch) => {
         if (launch.id !== id) return launch;
         const next = { ...launch, ...patch };
+        if ("channelId" in patch) {
+          const nextChannel = channels.find((channel) => channel.id === patch.channelId);
+          if (nextChannel?.duration) {
+            next.duration = Math.max(1, Number(nextChannel.duration) || 1);
+          }
+        }
         if ("startDate" in patch || "duration" in patch) {
           next.duration = Math.max(1, Number(next.duration) || 1);
           next.endDate = calculateEndDate(next.startDate, next.duration);

@@ -15,6 +15,50 @@ const PLATFORMS = ["АМ", "АО", "АМ+АО"];
 const PRIORITIES = ["0", "1", "2", "3", "4", "5"];
 const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "пилот / тест"];
 const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
+const GAME_PILL_STYLES = {
+  "Матрёшки": {
+    background: "#f2d8d8",
+    color: "#8d2e2e",
+    borderColor: "#e3b8b8",
+  },
+  Суперигра: {
+    background: "#17181a",
+    color: "#ffffff",
+    borderColor: "#17181a",
+  },
+  КНБ: {
+    background: "#f4f4f4",
+    color: "#17181a",
+    borderColor: "#dbdbdb",
+  },
+  Алхимия: {
+    background: "#f7ecec",
+    color: "#7f2424",
+    borderColor: "#e7c9c9",
+  },
+};
+const CHANNEL_PILL_STYLES = [
+  {
+    background: "#fff1f1",
+    color: "#8d2e2e",
+    borderColor: "#efcaca",
+  },
+  {
+    background: "#17181a",
+    color: "#ffffff",
+    borderColor: "#17181a",
+  },
+  {
+    background: "#f7f7f7",
+    color: "#2e2f33",
+    borderColor: "#dddddd",
+  },
+  {
+    background: "#f5e4e4",
+    color: "#922f2f",
+    borderColor: "#e7c4c4",
+  },
+];
 
 function normalizeLaunchPriority(value) {
   const normalized = String(value ?? "").trim();
@@ -395,6 +439,45 @@ function platformClass(platform) {
   if (platform === "АО") return "badge badge-green";
   if (platform === "АМ+АО") return "badge badge-blue";
   return "badge";
+}
+
+function getChannelColorIndex(channelId = "") {
+  return Array.from(String(channelId)).reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0
+  ) % CHANNEL_PILL_STYLES.length;
+}
+
+function renderEntityPill(label, style) {
+  return (
+    <span
+      className="entity-pill"
+      style={{
+        background: style.background,
+        color: style.color,
+        borderColor: style.borderColor,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function renderGamePill(game) {
+  return renderEntityPill(
+    game || GAMES[0],
+    GAME_PILL_STYLES[game] || {
+      background: "#f4f4f4",
+      color: "#17181a",
+      borderColor: "#dddddd",
+    }
+  );
+}
+
+function renderChannelPill(channelId, channels) {
+  const label = getChannelName(channelId, channels);
+  const style = CHANNEL_PILL_STYLES[getChannelColorIndex(channelId)];
+  return renderEntityPill(label, style);
 }
 
 function makeNewLaunch(channels) {
@@ -1961,12 +2044,12 @@ export default function LaunchesTab({
                           {renderEditableCell(
                             launch,
                             "game",
-                            launch.game || GAMES[0]
+                            renderGamePill(launch.game)
                           )}
                           {renderEditableCell(
                             launch,
                             "channelId",
-                            getChannelName(launch.channelId, channels)
+                            renderChannelPill(launch.channelId, channels)
                           )}
                           {renderEditableCell(
                             launch,

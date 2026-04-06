@@ -73,6 +73,10 @@ function normalizeLaunchPriority(priority) {
     : "3";
 }
 
+function getChannelDuration(channel) {
+  return Math.max(1, Number(channel?.duration) || 5);
+}
+
 function daysBetween(from, to) {
   const fromDate = parseISO(from);
   const toDate = parseISO(to);
@@ -563,7 +567,7 @@ export function buildSchedule({
         platform: "АМ+АО",
         priority: req.priority,
         campaignType: "CRM акция",
-        duration: channel.duration || 5,
+        duration: getChannelDuration(channel),
       };
 
       const hardCheck = evaluateAssistantHardRules(candidate, compiled);

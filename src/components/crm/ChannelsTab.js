@@ -48,7 +48,7 @@ function ChannelForm({ value, onChange }) {
   function update(field, fieldValue) {
     onChange({
       ...value,
-      [field]: field === "duration" ? Number(fieldValue) || 1 : fieldValue,
+      [field]: fieldValue,
     });
   }
 
@@ -77,7 +77,7 @@ function ChannelForm({ value, onChange }) {
         <input
           type="number"
           min="1"
-          value={value.duration}
+          value={value.duration ?? ""}
           onChange={(e) => update("duration", e.target.value)}
         />
       </div>
