@@ -1055,6 +1055,7 @@ export default function LaunchesTab({
   onAutoResolve,
   onSuggestBetterSlot,
   onResetData,
+  onDownloadTemplate,
 }) {
   const [search, setSearch] = useState("");
   const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
@@ -1257,6 +1258,12 @@ export default function LaunchesTab({
           >
             Экспорт Excel
           </button>
+
+          {typeof onDownloadTemplate === "function" && (
+            <button className="btn" onClick={onDownloadTemplate}>
+              Шаблон
+            </button>
+          )}
 
           <button
             className="btn"
