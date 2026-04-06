@@ -1248,6 +1248,7 @@ export default function LaunchesTab({
   const [isDraftOpen, setIsDraftOpen] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
   const [scheduleDraft, setScheduleDraft] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   // inline editing: null = closed, "new" = add row, id = editing that row
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState(null);
@@ -1293,6 +1294,18 @@ export default function LaunchesTab({
       return;
     }
     console.info("[launch-import]", message);
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   function duplicate(launch) {
