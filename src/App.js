@@ -367,7 +367,7 @@ function AppInner() {
             <LaunchesTab
               channels={channels}
               launches={launches}
-              assistantContext={{ messages, rules, preferences }}
+              assistantContext={{ messages, rules, preferences, toast }}
               onAddLaunch={handleAddLaunch}
               onUpdateLaunch={handleUpdateLaunch}
               onDeleteLaunch={handleDeleteLaunch}

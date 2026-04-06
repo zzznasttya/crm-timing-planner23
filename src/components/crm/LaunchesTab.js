@@ -145,41 +145,64 @@ async function importLaunchesFromFile(file, channels) {
     });
   }
   if (!rows.length) throw new Error("Файл пустой");
-  return rows.map((r, idx) => {
-    const channelRaw = getImportedValue(r, ["Канал", "Тип коммуникации"]);
-    const ch =
-      channels.find((c) => c.name === channelRaw || c.id === channelRaw) ||
-      channels[0];
-    const startDate =
-      normalizeImportedDate(
-        getImportedValue(r, ["Старт", "Дата запуска"]),
-        XLSX
-      ) || new Date().toISOString().slice(0, 10);
-    const explicitEndDate = normalizeImportedDate(
-      getImportedValue(r, ["Конец", "ДО"]),
-      XLSX
-    );
-    const duration =
-      Number(getImportedValue(r, ["Длительность"])) || ch?.duration || 5;
 
+  const imported = rows
+    .map((r, idx) => {
+      const channelRaw = getImportedValue(r, ["Канал", "Тип коммуникации"]);
+      const ch =
+        channels.find((c) => c.name === channelRaw || c.id === channelRaw) ||
+        channels[0];
+      const startDate =
+        normalizeImportedDate(
+          getImportedValue(r, ["Старт", "Дата запуска"]),
+          XLSX
+        ) || new Date().toISOString().slice(0, 10);
+      const explicitEndDate = normalizeImportedDate(
+        getImportedValue(r, ["Конец", "ДО"]),
+        XLSX
+      );
+      const duration =
+        Number(getImportedValue(r, ["Длительность"])) || ch?.duration || 5;
+
+      return {
+        id: "import-" + Date.now() + "-" + idx,
+        game: getImportedValue(r, ["Игра"]) || GAMES[0],
+        channelId: ch?.id || "",
+        startDate,
+        duration,
+        endDate: explicitEndDate || calculateEndDate(startDate, duration),
+        platform: getImportedValue(r, ["Платформа"]) || "АМ+АО",
+        audience: getImportedValue(r, ["База", "Отбор"]) || "",
+        priority: getImportedValue(r, ["Приоритет"]) || "Средний",
+        planningStatus: getImportedValue(r, ["Статус"]) || "бэклог",
+        comment: getImportedValue(r, ["Комментарий", "Коммент"]) || "",
+        campaignType:
+          getImportedValue(r, ["Тип кампании", "Кампейн", "КП"]) ||
+          "CRM акция",
+        manager: getImportedValue(r, ["Менеджер", "На ком задача"]) || "",
+        issues: [],
+        conflictStatus: "ok",
+      };
+    })
+    .filter(
+      (item) =>
+        item.game ||
+        item.channelId ||
+        item.startDate ||
+        item.endDate ||
+        item.comment
+    );
+
+  if (!imported.length) {
+    throw new Error("Не удалось распознать ни одной строки для импорта");
+  }
+
+  return imported.map((item) => {
+    const issues = detectConflicts(item, imported, channels);
     return {
-      id: "import-" + Date.now() + "-" + idx,
-      game: getImportedValue(r, ["Игра"]) || GAMES[0],
-      channelId: ch?.id || "",
-      startDate,
-      duration,
-      endDate: explicitEndDate || calculateEndDate(startDate, duration),
-      platform: getImportedValue(r, ["Платформа"]) || "АМ+АО",
-      audience: getImportedValue(r, ["База", "Отбор"]) || "",
-      priority: getImportedValue(r, ["Приоритет"]) || "Средний",
-      planningStatus: getImportedValue(r, ["Статус"]) || "бэклог",
-      comment: getImportedValue(r, ["Комментарий", "Коммент"]) || "",
-      campaignType:
-        getImportedValue(r, ["Тип кампании", "Кампейн", "КП"]) ||
-        "CRM акция",
-      manager: getImportedValue(r, ["Менеджер", "На ком задача"]) || "",
-      issues: [],
-      conflictStatus: "ok",
+      ...item,
+      issues,
+      conflictStatus: issues.length ? "conflict" : "ok",
     };
   });
 }
@@ -1165,6 +1188,14 @@ export default function LaunchesTab({
     });
   }, [launches, search]);
 
+  function reportImportStatus(message) {
+    if (assistantContext?.toast) {
+      assistantContext.toast(message);
+      return;
+    }
+    console.info("[launch-import]", message);
+  }
+
   function duplicate(launch) {
     onAddLaunch({
       ...launch,
@@ -1189,16 +1220,30 @@ export default function LaunchesTab({
     if (!file) return;
 
     try {
+      reportImportStatus(`Читаю файл: ${file.name}`);
       const importedLaunches = await importLaunchesFromFile(file, channels);
+      reportImportStatus(
+        `Файл прочитан, найдено ${importedLaunches.length} запуск(ов)`
+      );
 
       const confirmReplace = window.confirm(
         `Импортировать ${importedLaunches.length} запуск(ов)? Текущий список запусков будет заменён.`
       );
 
       if (confirmReplace && onImportLaunches) {
-        onImportLaunches(importedLaunches);
+        try {
+          reportImportStatus("Применяю импорт запусков");
+          onImportLaunches(importedLaunches);
+          reportImportStatus("Импорт запусков завершён");
+        } catch (error) {
+          console.error("Launch import failed after parsing", error);
+          alert(error?.message || "Не удалось применить импорт запусков");
+        }
+      } else {
+        reportImportStatus("Импорт запусков отменён пользователем");
       }
     } catch (error) {
+      console.error("Launch import parsing failed", error);
       alert(error?.message || "Не удалось импортировать файл");
     } finally {
       event.target.value = "";
