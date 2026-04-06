@@ -4,6 +4,10 @@ import {
   calculateEndDate,
   detectConflicts,
 } from "../../lib/crm-store";
+import WeekRangeNavigator, {
+  buildPeriodRange,
+  getCurrentWeekStart,
+} from "./WeekRangeNavigator";
 
 const PLATFORMS = ["АМ", "АО", "АМ+АО"];
 const PRIORITIES = ["Высокий", "Средний", "Низкий"];
@@ -1076,6 +1080,8 @@ function DraftPanel({ draft, onClose, onApplyDraft }) {
   );
 }
 
+const ENABLE_LAUNCH_DRAFT_BUTTON = false;
+
 // ── Compact inline form rendered inside a table row ──────────────────────────
 function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
   const availableChannels = channels;
@@ -1254,6 +1260,8 @@ export default function LaunchesTab({
   onDownloadTemplate,
 }) {
   const [search, setSearch] = useState("");
+  const [calendarMode, setCalendarMode] = useState("2w");
+  const [periodStart, setPeriodStart] = useState(getCurrentWeekStart);
   const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
   const [isDraftOpen, setIsDraftOpen] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
@@ -1294,18 +1302,26 @@ export default function LaunchesTab({
 
   const filtered = useMemo(() => {
     const safeLaunches = Array.isArray(launches) ? launches : [];
+    const period = buildPeriodRange(periodStart, calendarMode);
+    const periodStartString = period.start.toISOString().slice(0, 10);
+    const periodEndString = period.end.toISOString().slice(0, 10);
     return safeLaunches.filter((item) => {
       const gameValue = (item.game || "").toLowerCase();
       const audienceValue = (item.audience || "").toLowerCase();
       const searchValue = search.toLowerCase();
-
-      return (
+      const overlapsPeriod =
+        item.startDate &&
+        item.endDate &&
+        item.startDate <= periodEndString &&
+        item.endDate >= periodStartString;
+      const matchesSearch =
         !search.trim() ||
         gameValue.includes(searchValue) ||
-        audienceValue.includes(searchValue)
-      );
+        audienceValue.includes(searchValue);
+
+      return overlapsPeriod && matchesSearch;
     });
-  }, [launches, search]);
+  }, [launches, search, periodStart, calendarMode]);
 
   const selectedLaunches = useMemo(() => {
     const safeLaunches = Array.isArray(launches) ? launches : [];
@@ -1829,12 +1845,14 @@ export default function LaunchesTab({
             className="btn btn-primary"
             onClick={handleGenerateRecommendations}
           >
-            Сформировать предложения
+            Рекомендации
           </button>
 
-          <button className="btn btn-primary" onClick={handleBuildDraft}>
-            Собрать черновик
-          </button>
+          {ENABLE_LAUNCH_DRAFT_BUTTON && (
+            <button className="btn btn-primary" onClick={handleBuildDraft}>
+              Черновик изменений
+            </button>
+          )}
 
           <button
             className="btn"
@@ -1893,6 +1911,13 @@ export default function LaunchesTab({
           </button>
         </div>
       </div>
+
+      <WeekRangeNavigator
+        mode={calendarMode}
+        periodStart={periodStart}
+        onModeChange={setCalendarMode}
+        onPeriodStartChange={setPeriodStart}
+      />
 
       {selectedLaunches.length > 0 && (
         <div

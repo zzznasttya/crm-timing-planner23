@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "./Toast";
+import WeekRangeNavigator, {
+  buildPeriodRange,
+  getCurrentWeekStart,
+} from "./WeekRangeNavigator";
 import {
   AUDIENCE_OPTIONS,
   PRIORITY_OPTIONS,
@@ -556,6 +560,8 @@ export default function BusinessRequirementsTab({
 }) {
   const toast = useToast();
   const [search, setSearch] = useState("");
+  const [calendarMode, setCalendarMode] = useState("2w");
+  const [periodStart, setPeriodStart] = useState(getCurrentWeekStart);
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -708,11 +714,32 @@ export default function BusinessRequirementsTab({
     const normalizedRequirements = Array.isArray(requirements)
       ? requirements.map((item) => normalizeRequirement(item))
       : [];
+    const period = buildPeriodRange(periodStart, calendarMode);
+    const periodStartString = formatDate(period.start);
+    const periodEndString = formatDate(period.end);
+
+    const filteredByPeriod = normalizedRequirements.filter((item) => {
+      const itemStart =
+        item.hasFixedDates === "yes" && item.fixedStartDate
+          ? item.fixedStartDate
+          : item.weekStart;
+      const itemEnd =
+        item.hasFixedDates === "yes" && (item.fixedEndDate || item.fixedStartDate)
+          ? item.fixedEndDate || item.fixedStartDate
+          : item.weekEnd;
+
+      return (
+        itemStart &&
+        itemEnd &&
+        itemStart <= periodEndString &&
+        itemEnd >= periodStartString
+      );
+    });
 
     const q = search.trim().toLowerCase();
-    if (!q) return normalizedRequirements;
+    if (!q) return filteredByPeriod;
 
-    return normalizedRequirements.filter((item) => {
+    return filteredByPeriod.filter((item) => {
       const channelText = getChannelNames(
         item.channelIds,
         channels
@@ -730,7 +757,7 @@ export default function BusinessRequirementsTab({
         fixedDateText.includes(q)
       );
     });
-  }, [requirements, search, channels]);
+  }, [requirements, search, channels, periodStart, calendarMode]);
 
   const selectedRequirements = useMemo(() => {
     return filtered.filter((item) => selectedIds.has(item.id));
@@ -900,6 +927,13 @@ export default function BusinessRequirementsTab({
           )}
         </div>
       </div>
+
+      <WeekRangeNavigator
+        mode={calendarMode}
+        periodStart={periodStart}
+        onModeChange={setCalendarMode}
+        onPeriodStartChange={setPeriodStart}
+      />
 
       {selectedRequirements.length > 0 && (
         <div
