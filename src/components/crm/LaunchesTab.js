@@ -1066,16 +1066,16 @@ export default function LaunchesTab({
   const [editingData, setEditingData] = useState(null);
 
   const fileInputRef = useRef(null);
-  const importTypeRef = useRef("csv");
+  const importTypeRef = useRef("xlsx");
 
   useEffect(() => {
     function handleHeaderImport(event) {
-      importTypeRef.current = event.detail?.type || "csv";
+      importTypeRef.current = event.detail?.type || "xlsx";
       fileInputRef.current?.click();
     }
 
     function handleHeaderExport(event) {
-      const type = event.detail?.type || "csv";
+      const type = event.detail?.type || "xlsx";
 
       if (type === "csv") {
         downloadCSV(exportLaunchesToCSV(launches, channels));
@@ -1241,6 +1241,26 @@ export default function LaunchesTab({
           <button
             className="btn"
             onClick={() => {
+              importTypeRef.current = "xlsx";
+              if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+                fileInputRef.current.click();
+              }
+            }}
+          >
+            Импорт Excel
+          </button>
+
+          <button
+            className="btn"
+            onClick={() => exportLaunchesToExcel(launches, channels)}
+          >
+            Экспорт Excel
+          </button>
+
+          <button
+            className="btn"
+            onClick={() => {
               if (editingId === "new") {
                 setEditingId(null);
                 setEditingData(null);
@@ -1256,7 +1276,7 @@ export default function LaunchesTab({
           <input
             ref={fileInputRef}
             type="file"
-            accept={importTypeRef.current === "csv" ? ".csv" : ".xlsx,.xls"}
+            accept=".xlsx,.xls"
             style={{ display: "none" }}
             onChange={handleImportFileChange}
           />

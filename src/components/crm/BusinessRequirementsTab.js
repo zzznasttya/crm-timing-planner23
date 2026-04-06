@@ -75,49 +75,6 @@ function buildExportRows(requirements, channels) {
   }));
 }
 
-function exportRequirementsToCSV(requirements, channels) {
-  const rows = buildExportRows(requirements, channels);
-  const headers = Object.keys(
-    rows[0] || {
-      "Неделя с": "",
-      "Неделя до": "",
-      Игра: "",
-      Каналы: "",
-      База: "",
-      Приоритет: "",
-      "Жесткая привязка к датам": "",
-      "Дата с": "",
-      "Дата до": "",
-      Статус: "",
-      "Ожидаемый результат": "",
-      Комментарий: "",
-    }
-  );
-
-  const csvRows = [
-    headers,
-    ...rows.map((row) => headers.map((header) => row[header] ?? "")),
-  ];
-
-  return csvRows
-    .map((row) =>
-      row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
-    )
-    .join("\n");
-}
-
-function downloadCSV(content, filename) {
-  const blob = new Blob(["\ufeff" + content], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 async function exportRequirementsToExcel(requirements, channels) {
   const XLSX = await import("xlsx");
   const rows = buildExportRows(requirements, channels);
@@ -525,7 +482,7 @@ export default function BusinessRequirementsTab({
   const [editingData, setEditingData] = useState(null);
 
   const fileInputRef = useRef(null);
-  const importTypeRef = useRef("csv");
+  const importTypeRef = useRef("xlsx");
 
   function handleOpenCreate() {
     setEditingId("new");
@@ -618,7 +575,7 @@ export default function BusinessRequirementsTab({
 
   useEffect(() => {
     function handleImport(event) {
-      importTypeRef.current = event.detail?.type || "csv";
+      importTypeRef.current = event.detail?.type || "xlsx";
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
         fileInputRef.current.click();
@@ -626,14 +583,9 @@ export default function BusinessRequirementsTab({
     }
 
     function handleExport(event) {
-      const type = event.detail?.type || "csv";
+      const type = event.detail?.type || "xlsx";
 
-      if (type === "csv") {
-        const csv = exportRequirementsToCSV(requirements, channels);
-        downloadCSV(csv, "business-requirements.csv");
-      } else {
-        exportRequirementsToExcel(requirements, channels);
-      }
+      exportRequirementsToExcel(requirements, channels);
     }
 
     document.addEventListener(
@@ -704,19 +656,6 @@ export default function BusinessRequirementsTab({
           <button
             className="btn"
             onClick={() => {
-              importTypeRef.current = "csv";
-              if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-                fileInputRef.current.click();
-              }
-            }}
-          >
-            Импорт CSV
-          </button>
-
-          <button
-            className="btn"
-            onClick={() => {
               importTypeRef.current = "xlsx";
               if (fileInputRef.current) {
                 fileInputRef.current.value = "";
@@ -725,16 +664,6 @@ export default function BusinessRequirementsTab({
             }}
           >
             Импорт Excel
-          </button>
-
-          <button
-            className="btn"
-            onClick={() => {
-              const csv = exportRequirementsToCSV(requirements, channels);
-              downloadCSV(csv, "business-requirements.csv");
-            }}
-          >
-            Экспорт CSV
           </button>
 
           <button
@@ -755,7 +684,7 @@ export default function BusinessRequirementsTab({
       <input
         ref={fileInputRef}
         type="file"
-        accept={importTypeRef.current === "csv" ? ".csv" : ".xlsx,.xls"}
+        accept=".xlsx,.xls"
         style={{ display: "none" }}
         onChange={handleImportFileChange}
       />

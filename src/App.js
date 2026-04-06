@@ -173,6 +173,30 @@ function AppInner() {
     setScheduleDraft(result);
   }
 
+  async function handleDownloadLaunchesTemplate() {
+    try {
+      await downloadLaunchesTemplate();
+      toast("Шаблон запусков скачан");
+    } catch (error) {
+      toast(
+        error?.message || "Не удалось скачать шаблон запусков",
+        "warn"
+      );
+    }
+  }
+
+  async function handleDownloadRequirementsTemplate() {
+    try {
+      await downloadRequirementsTemplate();
+      toast("Шаблон бизнес-требований скачан");
+    } catch (error) {
+      toast(
+        error?.message || "Не удалось скачать шаблон бизнес-требований",
+        "warn"
+      );
+    }
+  }
+
   function handleApplyAssistantActions(payload) {
     const actions = Array.isArray(payload?.actions) ? payload.actions : [];
     const nextRules = Array.isArray(payload?.rules) ? payload.rules : rules;
@@ -353,7 +377,7 @@ function AppInner() {
               onAutoResolve={handleResolveConflicts}
               onSuggestBetterSlot={() => null}
               onResetData={handleReset}
-              onDownloadTemplate={downloadLaunchesTemplate}
+              onDownloadTemplate={handleDownloadLaunchesTemplate}
             />
           )}
           {activeTab === "channels" && (
@@ -374,7 +398,7 @@ function AppInner() {
               onAddRequirement={handleAddRequirement}
               onUpdateRequirement={handleUpdateRequirement}
               onDeleteRequirement={handleDeleteRequirement}
-              onDownloadTemplate={downloadRequirementsTemplate}
+              onDownloadTemplate={handleDownloadRequirementsTemplate}
             />
           )}
         </div>
