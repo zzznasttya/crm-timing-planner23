@@ -191,6 +191,7 @@ function buildExportRows(launches, channels) {
     База: l.audience || "",
     Приоритет: l.priority || "",
     Статус: l.planningStatus || "",
+    "База коммуникаций": l.sentBaseCount || "",
     Менеджер: l.manager || "",
     Комментарий: l.comment || "",
     Конфликт:
@@ -285,6 +286,9 @@ async function importLaunchesFromFile(file, channels) {
         audience: String(getImportedValue(r, ["База", "Отбор"]) || ""),
         priority: String(getImportedValue(r, ["Приоритет"]) || "Средний"),
         planningStatus: String(getImportedValue(r, ["Статус"]) || "бэклог"),
+        sentBaseCount: Number(
+          getImportedValue(r, ["База коммуникаций", "База комм", "БКП база"])
+        ) || "",
         comment: String(getImportedValue(r, ["Комментарий", "Коммент"]) || ""),
         campaignType: String(campaignTypeRaw),
         manager: String(
@@ -417,6 +421,7 @@ function makeNewLaunch(channels) {
     audience: "",
     priority: "Средний",
     planningStatus: "бэклог",
+    sentBaseCount: "",
     comment: "",
     issues: [],
     conflictStatus: "ok",
@@ -608,6 +613,19 @@ function LaunchForm({ value, channels, onChange }) {
           </select>
         </div>
       </div>
+
+      {normalizeStatus(value.planningStatus) === "запущено" && (
+        <div>
+          <label>База коммуникаций</label>
+          <input
+            type="number"
+            min="0"
+            value={value.sentBaseCount || ""}
+            onChange={(e) => update("sentBaseCount", e.target.value)}
+            placeholder="необязательно"
+          />
+        </div>
+      )}
 
       <div>
         <label>Тип кампании</label>
@@ -1003,6 +1021,18 @@ function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
             ))}
           </select>
         </div>
+        {normalizeStatus(value.planningStatus) === "запущено" && (
+          <div>
+            <label>База коммуникаций</label>
+            <input
+              type="number"
+              min="0"
+              value={value.sentBaseCount || ""}
+              onChange={(e) => upd("sentBaseCount", e.target.value)}
+              placeholder="необязательно"
+            />
+          </div>
+        )}
         <div>
           <label>Тип</label>
           <select
@@ -1202,6 +1232,10 @@ export default function LaunchesTab({
       planningStatus: normalizeStatus(nextLaunch.planningStatus),
       platform: nextLaunch.platform || "АМ+АО",
       priority: nextLaunch.priority || "Средний",
+      sentBaseCount:
+        nextLaunch.sentBaseCount === "" || nextLaunch.sentBaseCount == null
+          ? ""
+          : Math.max(0, Number(nextLaunch.sentBaseCount) || 0),
     };
 
     const channel = channels.find((item) => item.id === next.channelId);
@@ -1386,6 +1420,20 @@ export default function LaunchesTab({
             </option>
           ))}
         </select>
+      );
+    }
+
+    if (field === "sentBaseCount") {
+      return (
+        <input
+          {...commonProps}
+          type="number"
+          min="0"
+          value={editingCellValue}
+          onChange={(e) => setEditingCellValue(e.target.value)}
+          onBlur={() => saveCellEdit(launch, field, editingCellValue)}
+          style={{ width: "110px" }}
+        />
       );
     }
 
@@ -1763,6 +1811,7 @@ export default function LaunchesTab({
                   <th>База</th>
                   <th>Приоритет</th>
                   <th>Статус</th>
+                  <th>База комм.</th>
                   <th>Конфликт</th>
                   <th>Действия</th>
                 </tr>
@@ -1773,7 +1822,7 @@ export default function LaunchesTab({
                 {editingId === "new" && editingData && (
                   <tr style={{ background: "#f8faff" }}>
                     <td />
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <InlineForm
                         value={editingData}
                         channels={channels}
@@ -1816,7 +1865,7 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
-                          <td colSpan={11}>
+                          <td colSpan={12}>
                             <InlineForm
                               value={editingData}
                               channels={channels}
@@ -1908,10 +1957,20 @@ export default function LaunchesTab({
                                 className="status-select-clean"
                                 value={normalizeStatus(launch.planningStatus)}
                                 onChange={(e) =>
-                                  onUpdateLaunch({
-                                    ...launch,
-                                    planningStatus: e.target.value,
-                                  })
+                                  {
+                                    const nextStatus = e.target.value;
+                                    onUpdateLaunch({
+                                      ...launch,
+                                      planningStatus: nextStatus,
+                                    });
+                                    if (nextStatus === "запущено") {
+                                      setEditingId(launch.id);
+                                      setEditingData({
+                                        ...launch,
+                                        planningStatus: nextStatus,
+                                      });
+                                    }
+                                  }
                                 }
                                 style={statusSelectStyle(launch.planningStatus)}
                                 onClick={(e) => e.stopPropagation()}
@@ -1922,6 +1981,17 @@ export default function LaunchesTab({
                               </select>
                             </div>
                           </td>
+                          {normalizeStatus(launch.planningStatus) === "запущено"
+                            ? renderEditableCell(
+                                launch,
+                                "sentBaseCount",
+                                launch.sentBaseCount
+                                  ? String(launch.sentBaseCount)
+                                  : "ввести"
+                              )
+                            : (
+                              <td style={{ color: "#94a3b8" }}>—</td>
+                            )}
                           <td>
                             {launch.conflictStatus === "conflict" ? (
                               <span className="badge badge-red">Конфликт</span>

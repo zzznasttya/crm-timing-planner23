@@ -4,6 +4,7 @@ import LaunchesTab from "./components/crm/LaunchesTab";
 import ChannelsTab from "./components/crm/ChannelsTab";
 import CalendarTab from "./components/crm/CalendarTab";
 import BusinessRequirementsTab from "./components/crm/BusinessRequirementsTab";
+import BKPTab from "./components/crm/BKPTab";
 import AssistantPanel from "./components/crm/AssistantPanel";
 import ScheduleDraftModal from "./components/crm/ScheduleDraftModal";
 import { ToastProvider, useToast } from "./components/crm/Toast";
@@ -369,35 +370,22 @@ function AppInner() {
       <div className="container">
         <div
           className="hero"
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "16px",
-          }}
         >
-          <div>
+          <div className="hero-copy">
+            <div className="hero-kicker">Editorial CRM workspace</div>
             <div className="title">CRM Timing Planner</div>
             <div
+              className="hero-subtitle"
               style={{
-                fontSize: "12px",
-                color: "#71717a",
-                marginTop: "4px",
-                fontWeight: 500,
+                marginTop: "10px",
               }}
             >
-              Тайминг актуален на {todayLabel}
+              Плотный, управляемый план запусков с правилами, требованиями и
+              расчётом БКП.
             </div>
+            <div className="hero-meta">Тайминг актуален на {todayLabel}</div>
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginTop: "4px",
-            }}
-          >
+          <div className="hero-actions">
             {historyStack.length > 0 && (
               <button className="btn" onClick={undoLastChange}>
                 Отменить
@@ -420,6 +408,7 @@ function AppInner() {
               ["channels", "Каналы"],
               ["calendar", "Календарь"],
               ["business-requirements", "Бизнес-требования"],
+              ["bkp", "БКП"],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -472,6 +461,9 @@ function AppInner() {
               onImportRequirements={handleImportRequirements}
               onDownloadTemplate={handleDownloadRequirementsTemplate}
             />
+          )}
+          {activeTab === "bkp" && (
+            <BKPTab launches={launches} channels={channels} />
           )}
         </div>
       </div>
@@ -553,7 +545,7 @@ function AppInner() {
                 position: "absolute",
                 top: "-2px",
                 right: "-2px",
-                background: "#2563eb",
+                background: "#d61919",
                 color: "#fff",
                 fontSize: "10px",
                 fontWeight: 800,
@@ -564,7 +556,7 @@ function AppInner() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 2px 6px rgba(37,99,235,0.5)",
+                boxShadow: "0 2px 8px rgba(214,25,25,0.45)",
               }}
             >
               {activeRulesCount}
@@ -612,7 +604,7 @@ function AppInner() {
                 padding: "14px 18px",
                 borderBottom: "1px solid #e4e4e7",
                 flexShrink: 0,
-                background: "#fafafa",
+                background: "#f6f0ea",
               }}
             >
               <div
@@ -657,7 +649,7 @@ function AppInner() {
                     }}
                   >
                     {activeRulesCount > 0 ? (
-                      <span style={{ color: "#2563eb", fontWeight: 600 }}>
+                      <span style={{ color: "#d61919", fontWeight: 700 }}>
                         {activeRulesCount} правил активно
                       </span>
                     ) : (

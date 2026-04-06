@@ -419,6 +419,7 @@ export async function downloadLaunchesTemplate() {
     "База",
     "Приоритет",
     "Статус",
+    "База коммуникаций",
     "Менеджер",
     "Комментарий",
   ];
@@ -565,6 +566,7 @@ export function buildSchedule({
         audience: candidate.audience,
         priority: getPriorityLabel(req.priority),
         planningStatus: "бэклог",
+        sentBaseCount: "",
         campaignType: "CRM акция",
         comment: req.comment
           ? `[Авто] ${req.comment}`
