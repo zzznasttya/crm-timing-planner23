@@ -140,6 +140,24 @@ function AppInner() {
     deleteRequirement(id);
     toast("Требование удалено");
   }
+  function handleBulkUpdateRequirements(nextRequirements) {
+    if (!Array.isArray(nextRequirements) || !nextRequirements.length) return;
+    const updatesById = new Map(
+      nextRequirements.map((requirement) => [requirement.id, requirement])
+    );
+    replaceRequirements(
+      requirements.map((requirement) => updatesById.get(requirement.id) || requirement)
+    );
+    toast("Обновлено " + nextRequirements.length + " бизнес-требований");
+  }
+  function handleBulkDeleteRequirements(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const idsSet = new Set(ids);
+    replaceRequirements(
+      requirements.filter((requirement) => !idsSet.has(requirement.id))
+    );
+    toast("Удалено " + ids.length + " бизнес-требований");
+  }
 
   function handleImportRequirements(importedRequirements) {
     const nextRequirements = Array.isArray(importedRequirements)
@@ -466,6 +484,8 @@ function AppInner() {
               onAddRequirement={handleAddRequirement}
               onUpdateRequirement={handleUpdateRequirement}
               onDeleteRequirement={handleDeleteRequirement}
+              onBulkUpdateRequirements={handleBulkUpdateRequirements}
+              onBulkDeleteRequirements={handleBulkDeleteRequirements}
               onImportRequirements={handleImportRequirements}
               onDownloadTemplate={handleDownloadRequirementsTemplate}
             />

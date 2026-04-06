@@ -549,6 +549,8 @@ export default function BusinessRequirementsTab({
   onAddRequirement,
   onUpdateRequirement,
   onDeleteRequirement,
+  onBulkUpdateRequirements,
+  onBulkDeleteRequirements,
   onImportRequirements,
   onDownloadTemplate,
 }) {
@@ -556,6 +558,12 @@ export default function BusinessRequirementsTab({
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [lastSelectedId, setLastSelectedId] = useState(null);
+  const [bulkEdit, setBulkEdit] = useState({
+    status: "",
+    priority: "",
+  });
 
   const fileInputRef = useRef(null);
 
@@ -724,6 +732,132 @@ export default function BusinessRequirementsTab({
     });
   }, [requirements, search, channels]);
 
+  const selectedRequirements = useMemo(() => {
+    return filtered.filter((item) => selectedIds.has(item.id));
+  }, [filtered, selectedIds]);
+
+  useEffect(() => {
+    const requirementIds = new Set(
+      (Array.isArray(requirements) ? requirements : []).map((item) => item.id)
+    );
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => requirementIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [requirements]);
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    setLastSelectedId(id);
+  }
+
+  function handleSelectChange(event, id) {
+    const shouldSelect = event.target.checked;
+    const isRangeSelection = event.nativeEvent?.shiftKey;
+    const visibleIds = filtered.map((item) => item.id);
+
+    if (isRangeSelection && lastSelectedId && visibleIds.includes(lastSelectedId)) {
+      const startIndex = visibleIds.indexOf(lastSelectedId);
+      const endIndex = visibleIds.indexOf(id);
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        const [from, to] =
+          startIndex <= endIndex
+            ? [startIndex, endIndex]
+            : [endIndex, startIndex];
+        const rangeIds = visibleIds.slice(from, to + 1);
+
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((rangeId) => {
+            if (shouldSelect) {
+              next.add(rangeId);
+            } else {
+              next.delete(rangeId);
+            }
+          });
+          return next;
+        });
+        setLastSelectedId(id);
+        return;
+      }
+    }
+
+    toggleSelect(id);
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setLastSelectedId(null);
+  }
+
+  function updateBulkField(field, value) {
+    setBulkEdit((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function handleApplyBulkEdit() {
+    if (
+      !selectedRequirements.length ||
+      typeof onBulkUpdateRequirements !== "function"
+    ) {
+      return;
+    }
+
+    const hasStatus = Boolean(bulkEdit.status);
+    const hasPriority = Boolean(bulkEdit.priority);
+
+    if (!hasStatus && !hasPriority) {
+      if (toast) toast("Сначала выбери хотя бы одно массовое изменение");
+      return;
+    }
+
+    const nextRequirements = selectedRequirements.map((item) =>
+      normalizeRequirement({
+        ...item,
+        status: hasStatus ? bulkEdit.status : item.status,
+        priority: hasPriority ? bulkEdit.priority : item.priority,
+      })
+    );
+
+    onBulkUpdateRequirements(nextRequirements);
+    clearSelection();
+    setBulkEdit({ status: "", priority: "" });
+  }
+
+  function handleBulkDelete() {
+    if (
+      !selectedRequirements.length ||
+      typeof onBulkDeleteRequirements !== "function"
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Удалить выбранные бизнес-требования: ${selectedRequirements.length}?`
+      )
+    ) {
+      return;
+    }
+
+    onBulkDeleteRequirements(
+      selectedRequirements.map((requirement) => requirement.id)
+    );
+    clearSelection();
+  }
+
   return (
     <div>
       <div className="toolbar">
@@ -767,6 +901,69 @@ export default function BusinessRequirementsTab({
         </div>
       </div>
 
+      {selectedRequirements.length > 0 && (
+        <div
+          className="section-card"
+          style={{
+            marginBottom: "16px",
+            padding: "14px 16px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            alignItems: "end",
+          }}
+        >
+          <div style={{ minWidth: "160px" }}>
+            <div className="muted small">Выбрано</div>
+            <div style={{ fontWeight: 700, fontSize: "18px" }}>
+              {selectedRequirements.length}
+            </div>
+          </div>
+
+          <div>
+            <label>Статус</label>
+            <select
+              value={bulkEdit.status}
+              onChange={(e) => updateBulkField("status", e.target.value)}
+            >
+              <option value="">Не менять</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label>Приоритет</label>
+            <select
+              value={bulkEdit.priority}
+              onChange={(e) => updateBulkField("priority", e.target.value)}
+            >
+              <option value="">Не менять</option>
+              {PRIORITY_OPTIONS.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="btn btn-primary" onClick={handleApplyBulkEdit}>
+            Применить к выбранным
+          </button>
+
+          <button className="btn" onClick={clearSelection}>
+            Снять выбор
+          </button>
+
+          <button className="btn btn-danger" onClick={handleBulkDelete}>
+            Удалить выбранные
+          </button>
+        </div>
+      )}
+
       <input
         ref={fileInputRef}
         type="file"
@@ -779,6 +976,7 @@ export default function BusinessRequirementsTab({
         <table className="crm-table">
           <thead>
             <tr>
+              <th style={{ width: 44 }}></th>
               <th>Неделя</th>
               <th>Игра</th>
               <th>Каналы</th>
@@ -794,6 +992,7 @@ export default function BusinessRequirementsTab({
           <tbody>
             {editingId === "new" && editingData && (
               <tr style={{ background: "#f8faff" }}>
+                <td />
                 <td colSpan={9}>
                   <RequirementInlineForm
                     value={editingData}
@@ -814,6 +1013,16 @@ export default function BusinessRequirementsTab({
                 <React.Fragment key={item.id}>
                   {isEditing ? (
                     <tr style={{ background: "#f8faff" }}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(event) =>
+                            handleSelectChange(event, item.id)
+                          }
+                          style={{ cursor: "pointer" }}
+                        />
+                      </td>
                       <td colSpan={9}>
                         <RequirementInlineForm
                           value={editingData}
@@ -832,6 +1041,14 @@ export default function BusinessRequirementsTab({
                         setEditingData(normalizeRequirement(item));
                       }}
                     >
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(event) => handleSelectChange(event, item.id)}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </td>
                       <td>
                         {item.weekStart} — {item.weekEnd}
                       </td>
@@ -883,7 +1100,7 @@ export default function BusinessRequirementsTab({
             {!filtered.length && (
               <tr>
                 <td
-                  colSpan="9"
+                  colSpan="10"
                   className="muted"
                   style={{ textAlign: "center" }}
                 >
