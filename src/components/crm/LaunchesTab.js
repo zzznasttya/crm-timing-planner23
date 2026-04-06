@@ -22,6 +22,50 @@ function downloadCSV(content, filename) {
   URL.revokeObjectURL(url);
 }
 
+function getImportedValue(row, keys) {
+  for (const key of keys) {
+    if (row[key] != null && String(row[key]).trim() !== "") {
+      return row[key];
+    }
+  }
+  return "";
+}
+
+function normalizeImportedDate(value, XLSX) {
+  if (value == null || value === "") return "";
+
+  if (typeof value === "number" && XLSX?.SSF?.parse_date_code) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      const yyyy = String(parsed.y);
+      const mm = String(parsed.m).padStart(2, "0");
+      const dd = String(parsed.d).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const ruMatch = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (ruMatch) {
+    const [, dd, mm, yyyy] = ruMatch;
+    return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return "";
+}
+
 function buildExportRows(launches, channels) {
   return launches.map((l) => ({
     Игра: l.game || "",
@@ -102,25 +146,38 @@ async function importLaunchesFromFile(file, channels) {
   }
   if (!rows.length) throw new Error("Файл пустой");
   return rows.map((r, idx) => {
+    const channelRaw = getImportedValue(r, ["Канал", "Тип коммуникации"]);
     const ch =
-      channels.find((c) => c.name === r["Канал"] || c.id === r["Канал"]) ||
+      channels.find((c) => c.name === channelRaw || c.id === channelRaw) ||
       channels[0];
-    const startDate = r["Старт"] || new Date().toISOString().slice(0, 10);
-    const duration = Number(r["Длительность"]) || ch?.duration || 5;
+    const startDate =
+      normalizeImportedDate(
+        getImportedValue(r, ["Старт", "Дата запуска"]),
+        XLSX
+      ) || new Date().toISOString().slice(0, 10);
+    const explicitEndDate = normalizeImportedDate(
+      getImportedValue(r, ["Конец", "ДО"]),
+      XLSX
+    );
+    const duration =
+      Number(getImportedValue(r, ["Длительность"])) || ch?.duration || 5;
+
     return {
       id: "import-" + Date.now() + "-" + idx,
-      game: r["Игра"] || GAMES[0],
+      game: getImportedValue(r, ["Игра"]) || GAMES[0],
       channelId: ch?.id || "",
       startDate,
       duration,
-      endDate: r["Конец"] || calculateEndDate(startDate, duration),
-      platform: r["Платформа"] || "АМ+АО",
-      audience: r["База"] || "",
-      priority: r["Приоритет"] || "Средний",
-      planningStatus: r["Статус"] || "бэклог",
-      comment: r["Комментарий"] || "",
-      campaignType: r["Тип кампании"] || "CRM акция",
-      manager: r["Менеджер"] || "",
+      endDate: explicitEndDate || calculateEndDate(startDate, duration),
+      platform: getImportedValue(r, ["Платформа"]) || "АМ+АО",
+      audience: getImportedValue(r, ["База", "Отбор"]) || "",
+      priority: getImportedValue(r, ["Приоритет"]) || "Средний",
+      planningStatus: getImportedValue(r, ["Статус"]) || "бэклог",
+      comment: getImportedValue(r, ["Комментарий", "Коммент"]) || "",
+      campaignType:
+        getImportedValue(r, ["Тип кампании", "Кампейн", "КП"]) ||
+        "CRM акция",
+      manager: getImportedValue(r, ["Менеджер", "На ком задача"]) || "",
       issues: [],
       conflictStatus: "ok",
     };
