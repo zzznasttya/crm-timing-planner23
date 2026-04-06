@@ -99,6 +99,22 @@ function AppInner() {
     deleteLaunch(id);
     toast("Запуск удалён");
   }
+  function handleBulkUpdateLaunches(nextLaunches) {
+    if (!Array.isArray(nextLaunches) || !nextLaunches.length) return;
+    const updatesById = new Map(nextLaunches.map((launch) => [launch.id, launch]));
+    pushSnapshot();
+    replaceLaunches(
+      launches.map((launch) => updatesById.get(launch.id) || launch)
+    );
+    toast("Обновлено " + nextLaunches.length + " запусков");
+  }
+  function handleBulkDeleteLaunches(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const idsSet = new Set(ids);
+    pushSnapshot();
+    replaceLaunches(launches.filter((launch) => !idsSet.has(launch.id)));
+    toast("Удалено " + ids.length + " запусков");
+  }
   function handleAddChannel(ch) {
     addChannel(ch);
     toast("Канал добавлен");
@@ -370,6 +386,8 @@ function AppInner() {
               assistantContext={{ messages, rules, preferences, toast }}
               onAddLaunch={handleAddLaunch}
               onUpdateLaunch={handleUpdateLaunch}
+              onBulkUpdateLaunches={handleBulkUpdateLaunches}
+              onBulkDeleteLaunches={handleBulkDeleteLaunches}
               onDeleteLaunch={handleDeleteLaunch}
               onApplyProposals={handleApplyProposals}
               onApplyDraft={handleApplyDraft}

@@ -430,6 +430,14 @@ function formatRuDate(dateString) {
   return `${day}.${month}.${year}`;
 }
 
+function shiftDateByDays(dateString, days) {
+  if (!dateString || !Number.isFinite(days) || days === 0) return dateString;
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateString;
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function renderAppliedRules(provenance) {
   const hits = provenance?.appliedRules || [];
   if (!hits.length) return null;
@@ -1234,6 +1242,8 @@ export default function LaunchesTab({
   assistantContext,
   onAddLaunch,
   onUpdateLaunch,
+  onBulkUpdateLaunches,
+  onBulkDeleteLaunches,
   onApplyProposals,
   onApplyDraft,
   onImportLaunches,
@@ -1249,6 +1259,14 @@ export default function LaunchesTab({
   const [recommendations, setRecommendations] = useState([]);
   const [scheduleDraft, setScheduleDraft] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [editingCell, setEditingCell] = useState(null);
+  const [editingCellValue, setEditingCellValue] = useState("");
+  const [bulkEdit, setBulkEdit] = useState({
+    planningStatus: "",
+    priority: "",
+    channelId: "",
+    shiftDays: "",
+  });
   // inline editing: null = closed, "new" = add row, id = editing that row
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState(null);
@@ -1288,6 +1306,20 @@ export default function LaunchesTab({
     });
   }, [launches, search]);
 
+  const selectedLaunches = useMemo(() => {
+    const safeLaunches = Array.isArray(launches) ? launches : [];
+    return safeLaunches.filter((launch) => selectedIds.has(launch.id));
+  }, [launches, selectedIds]);
+
+  useEffect(() => {
+    const launchIds = new Set((Array.isArray(launches) ? launches : []).map((item) => item.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => launchIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [launches]);
+
   function reportImportStatus(message) {
     if (assistantContext?.toast) {
       assistantContext.toast(message);
@@ -1308,6 +1340,231 @@ export default function LaunchesTab({
     });
   }
 
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function updateBulkField(field, value) {
+    setBulkEdit((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function buildNormalizedLaunch(nextLaunch) {
+    const next = {
+      ...nextLaunch,
+      game: nextLaunch.game || GAMES[0],
+      planningStatus: normalizeStatus(nextLaunch.planningStatus),
+      platform: nextLaunch.platform || "АМ+АО",
+      priority: nextLaunch.priority || "Средний",
+    };
+
+    const channel = channels.find((item) => item.id === next.channelId);
+    if (channel && (!next.duration || Number(next.duration) <= 0)) {
+      next.duration = channel.duration || 5;
+    }
+
+    next.duration = Math.max(1, Number(next.duration) || 1);
+    next.endDate = calculateEndDate(next.startDate, next.duration);
+
+    const nextAllLaunches = launches.map((launch) =>
+      launch.id === next.id ? next : launch
+    );
+    const issues = detectConflicts(next, nextAllLaunches, channels);
+
+    return {
+      ...next,
+      issues,
+      conflictStatus: issues.length ? "conflict" : "ok",
+    };
+  }
+
+  function startCellEdit(launch, field) {
+    setEditingCell({ id: launch.id, field });
+    setEditingCellValue(
+      field === "duration"
+        ? String(launch[field] ?? "")
+        : launch[field] ?? ""
+    );
+  }
+
+  function cancelCellEdit() {
+    setEditingCell(null);
+    setEditingCellValue("");
+  }
+
+  function saveCellEdit(launch, field, value) {
+    let next = { ...launch, [field]: value };
+
+    if (field === "channelId") {
+      const channel = channels.find((item) => item.id === value);
+      if (channel) {
+        next.duration = channel.duration || next.duration || 5;
+      }
+    }
+
+    if (field === "duration") {
+      next.duration = Math.max(1, Number(value) || launch.duration || 1);
+    }
+
+    onUpdateLaunch(buildNormalizedLaunch(next));
+    setEditingCell(null);
+    setEditingCellValue("");
+  }
+
+  function renderCellEditor(launch, field) {
+    const commonProps = {
+      autoFocus: true,
+      onClick: (event) => event.stopPropagation(),
+      onKeyDown: (event) => {
+        if (event.key === "Enter") {
+          saveCellEdit(launch, field, editingCellValue);
+        }
+        if (event.key === "Escape") {
+          cancelCellEdit();
+        }
+      },
+    };
+
+    if (field === "game") {
+      return (
+        <select
+          {...commonProps}
+          value={editingCellValue || launch.game || GAMES[0]}
+          onChange={(e) => {
+            setEditingCellValue(e.target.value);
+            saveCellEdit(launch, field, e.target.value);
+          }}
+          onBlur={cancelCellEdit}
+        >
+          {GAMES.map((game) => (
+            <option key={game} value={game}>
+              {game}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field === "channelId") {
+      return (
+        <select
+          {...commonProps}
+          value={editingCellValue || launch.channelId || ""}
+          onChange={(e) => {
+            setEditingCellValue(e.target.value);
+            saveCellEdit(launch, field, e.target.value);
+          }}
+          onBlur={cancelCellEdit}
+        >
+          {channels.map((channel) => (
+            <option key={channel.id} value={channel.id}>
+              {formatChannelOptionLabel(channel)}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field === "startDate") {
+      return (
+        <input
+          {...commonProps}
+          type="date"
+          value={editingCellValue || launch.startDate || ""}
+          onChange={(e) => setEditingCellValue(e.target.value)}
+          onBlur={() => saveCellEdit(launch, field, editingCellValue)}
+        />
+      );
+    }
+
+    if (field === "duration") {
+      return (
+        <input
+          {...commonProps}
+          type="number"
+          min="1"
+          value={editingCellValue || String(launch.duration || 1)}
+          onChange={(e) => setEditingCellValue(e.target.value)}
+          onBlur={() => saveCellEdit(launch, field, editingCellValue)}
+          style={{ width: "72px" }}
+        />
+      );
+    }
+
+    if (field === "platform") {
+      return (
+        <select
+          {...commonProps}
+          value={editingCellValue || launch.platform || "АМ+АО"}
+          onChange={(e) => {
+            setEditingCellValue(e.target.value);
+            saveCellEdit(launch, field, e.target.value);
+          }}
+          onBlur={cancelCellEdit}
+        >
+          {PLATFORMS.map((platform) => (
+            <option key={platform} value={platform}>
+              {platform}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field === "audience") {
+      return (
+        <input
+          {...commonProps}
+          type="text"
+          value={editingCellValue}
+          onChange={(e) => setEditingCellValue(e.target.value)}
+          onBlur={() => saveCellEdit(launch, field, editingCellValue)}
+        />
+      );
+    }
+
+    if (field === "priority") {
+      return (
+        <select
+          {...commonProps}
+          value={editingCellValue || launch.priority || "Средний"}
+          onChange={(e) => {
+            setEditingCellValue(e.target.value);
+            saveCellEdit(launch, field, e.target.value);
+          }}
+          onBlur={cancelCellEdit}
+        >
+          {PRIORITIES.map((priority) => (
+            <option key={priority} value={priority}>
+              {priority}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    return null;
+  }
+
+  function renderEditableCell(launch, field, content) {
+    const isEditing =
+      editingCell?.id === launch.id && editingCell?.field === field;
+
+    return (
+      <td
+          onClick={(event) => {
+            event.stopPropagation();
+            startCellEdit(launch, field);
+          }}
+        style={{ cursor: "pointer" }}
+      >
+        {isEditing ? renderCellEditor(launch, field) : content}
+      </td>
+    );
+  }
+
   function duplicate(launch) {
     onAddLaunch({
       ...launch,
@@ -1325,6 +1582,94 @@ export default function LaunchesTab({
       startDate: next,
       endDate: calculateEndDate(next, launch.duration),
     });
+  }
+
+  function handleApplyBulkEdit() {
+    if (!selectedLaunches.length || typeof onBulkUpdateLaunches !== "function") {
+      return;
+    }
+
+    const shiftDays = Number(bulkEdit.shiftDays || 0);
+    const hasShift = Number.isFinite(shiftDays) && shiftDays !== 0;
+    const hasStatus = Boolean(bulkEdit.planningStatus);
+    const hasPriority = Boolean(bulkEdit.priority);
+    const hasChannel = Boolean(bulkEdit.channelId);
+
+    if (!hasShift && !hasStatus && !hasPriority && !hasChannel) {
+      reportImportStatus("Сначала выбери хотя бы одно массовое изменение");
+      return;
+    }
+
+    const draftUpdates = selectedLaunches.map((launch) => {
+      const next = { ...launch };
+
+      if (hasStatus) {
+        next.planningStatus = bulkEdit.planningStatus;
+      }
+
+      if (hasPriority) {
+        next.priority = bulkEdit.priority;
+      }
+
+      if (hasChannel) {
+        const nextChannel = channels.find((channel) => channel.id === bulkEdit.channelId);
+        next.channelId = bulkEdit.channelId;
+        if (nextChannel?.duration) {
+          next.duration = nextChannel.duration;
+        }
+        next.endDate = calculateEndDate(next.startDate, next.duration);
+      }
+
+      if (hasShift) {
+        next.startDate = shiftDateByDays(next.startDate, shiftDays);
+        next.endDate = calculateEndDate(next.startDate, next.duration);
+        next.earliestStartDate = shiftDateByDays(
+          next.earliestStartDate || launch.earliestStartDate,
+          shiftDays
+        );
+        next.latestStartDate = shiftDateByDays(
+          next.latestStartDate || launch.latestStartDate,
+          shiftDays
+        );
+      }
+
+      return next;
+    });
+
+    const draftById = new Map(draftUpdates.map((launch) => [launch.id, launch]));
+    const nextAllLaunches = launches.map(
+      (launch) => draftById.get(launch.id) || launch
+    );
+    const nextLaunches = draftUpdates.map((launch) => {
+      const issues = detectConflicts(launch, nextAllLaunches, channels);
+      return {
+        ...launch,
+        issues,
+        conflictStatus: issues.length ? "conflict" : "ok",
+      };
+    });
+
+    onBulkUpdateLaunches(nextLaunches);
+    clearSelection();
+    setBulkEdit({
+      planningStatus: "",
+      priority: "",
+      channelId: "",
+      shiftDays: "",
+    });
+  }
+
+  function handleBulkDelete() {
+    if (!selectedLaunches.length || typeof onBulkDeleteLaunches !== "function") {
+      return;
+    }
+
+    if (!window.confirm(`Удалить выбранные запуски: ${selectedLaunches.length}?`)) {
+      return;
+    }
+
+    onBulkDeleteLaunches(selectedLaunches.map((launch) => launch.id));
+    clearSelection();
   }
 
   async function handleImportFileChange(event) {
@@ -1511,6 +1856,95 @@ export default function LaunchesTab({
         </div>
       </div>
 
+      {selectedLaunches.length > 0 && (
+        <div
+          className="section-card"
+          style={{
+            marginBottom: "16px",
+            padding: "14px 16px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            alignItems: "end",
+          }}
+        >
+          <div style={{ minWidth: "160px" }}>
+            <div className="muted small">Выбрано</div>
+            <div style={{ fontWeight: 700, fontSize: "18px" }}>
+              {selectedLaunches.length}
+            </div>
+          </div>
+
+          <div>
+            <label>Статус</label>
+            <select
+              value={bulkEdit.planningStatus}
+              onChange={(e) => updateBulkField("planningStatus", e.target.value)}
+            >
+              <option value="">Не менять</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label>Приоритет</label>
+            <select
+              value={bulkEdit.priority}
+              onChange={(e) => updateBulkField("priority", e.target.value)}
+            >
+              <option value="">Не менять</option>
+              {PRIORITIES.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label>Канал</label>
+            <select
+              value={bulkEdit.channelId}
+              onChange={(e) => updateBulkField("channelId", e.target.value)}
+            >
+              <option value="">Не менять</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  {formatChannelOptionLabel(channel)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label>Сдвиг дат, дней</label>
+            <input
+              type="number"
+              value={bulkEdit.shiftDays}
+              onChange={(e) => updateBulkField("shiftDays", e.target.value)}
+              placeholder="0"
+              style={{ maxWidth: "120px" }}
+            />
+          </div>
+
+          <button className="btn btn-primary" onClick={handleApplyBulkEdit}>
+            Применить к выбранным
+          </button>
+
+          <button className="btn" onClick={clearSelection}>
+            Снять выбор
+          </button>
+
+          <button className="btn btn-danger" onClick={handleBulkDelete}>
+            Удалить выбранные
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           display: "flex",
@@ -1628,22 +2062,46 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
-                          <td>{launch.game || GAMES[0]}</td>
-                          <td>{getChannelName(launch.channelId, channels)}</td>
-                          <td>{launch.startDate}</td>
-                          <td>{launch.duration}</td>
+                          {renderEditableCell(
+                            launch,
+                            "game",
+                            launch.game || GAMES[0]
+                          )}
+                          {renderEditableCell(
+                            launch,
+                            "channelId",
+                            getChannelName(launch.channelId, channels)
+                          )}
+                          {renderEditableCell(
+                            launch,
+                            "startDate",
+                            launch.startDate
+                          )}
+                          {renderEditableCell(
+                            launch,
+                            "duration",
+                            launch.duration
+                          )}
                           <td>{launch.endDate}</td>
-                          <td>
+                          {renderEditableCell(
+                            launch,
+                            "platform",
                             <span className={platformClass(launch.platform)}>
                               {launch.platform}
                             </span>
-                          </td>
-                          <td>{launch.audience || "—"}</td>
-                          <td>
+                          )}
+                          {renderEditableCell(
+                            launch,
+                            "audience",
+                            launch.audience || "—"
+                          )}
+                          {renderEditableCell(
+                            launch,
+                            "priority",
                             <span className={priorityClass(launch.priority)}>
                               {launch.priority}
                             </span>
-                          </td>
+                          )}
                           <td>
                             <div className="status-select-wrap">
                               <select

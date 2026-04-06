@@ -103,55 +103,122 @@ async function exportRequirementsToExcel(requirements, channels) {
   );
 }
 
-function parseCsvLine(line) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
+function normalizeImportedDate(value, XLSX) {
+  if (value == null || value === "") return "";
 
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    const next = line[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += char;
+  if (typeof value === "number" && XLSX?.SSF?.parse_date_code) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      const yyyy = String(parsed.y);
+      const mm = String(parsed.m).padStart(2, "0");
+      const dd = String(parsed.d).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
     }
   }
 
-  result.push(current);
-  return result;
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const ruMatch = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (ruMatch) {
+    const [, dd, mm, yyyy] = ruMatch;
+    return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return "";
 }
 
-function parseCsvText(text) {
-  const clean = text.replace(/^\uFEFF/, "").trim();
-  if (!clean) return [];
+function rowsFromWorksheet(sheet, XLSX) {
+  if (!sheet) return [];
 
-  const lines = clean.split(/\r?\n/);
-  if (lines.length < 2) return [];
+  try {
+    const direct = XLSX.utils.sheet_to_json(sheet, {
+      defval: "",
+      raw: true,
+      blankrows: false,
+    });
+    if (Array.isArray(direct) && direct.length > 0) {
+      return direct;
+    }
+  } catch {}
 
-  const headers = parseCsvLine(lines[0]).map((item) => item.trim());
+  let matrix = [];
+  try {
+    matrix = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+      blankrows: false,
+    });
+  } catch {
+    matrix = [];
+  }
 
-  return lines
-    .slice(1)
-    .filter(Boolean)
-    .map((line) => {
-      const values = parseCsvLine(line);
-      const row = {};
+  if (!Array.isArray(matrix) || matrix.length < 2) {
+    matrix.length = 0;
+  }
 
+  if (matrix.length >= 2) {
+    const [headerRow, ...bodyRows] = matrix;
+    const headers = (headerRow || []).map((cell) => String(cell || "").trim());
+    if (headers.some(Boolean)) {
+      const rows = bodyRows
+        .filter(
+          (row) =>
+            Array.isArray(row) &&
+            row.some((cell) => String(cell || "").trim() !== "")
+        )
+        .map((row) => {
+          const obj = {};
+          headers.forEach((header, index) => {
+            if (!header) return;
+            obj[header] = row[index] ?? "";
+          });
+          return obj;
+        });
+      if (rows.length > 0) return rows;
+    }
+  }
+
+  const ref = sheet["!ref"];
+  if (!ref) return [];
+
+  const range = XLSX.utils.decode_range(ref);
+  const rawMatrix = [];
+  for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
+    const row = [];
+    for (let colIndex = range.s.c; colIndex <= range.e.c; colIndex += 1) {
+      const cellRef = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+      const cell = sheet[cellRef];
+      row.push(cell?.w ?? cell?.v ?? "");
+    }
+    rawMatrix.push(row);
+  }
+
+  if (rawMatrix.length < 2) return [];
+
+  const [headerRow, ...bodyRows] = rawMatrix;
+  const headers = (headerRow || []).map((cell) => String(cell || "").trim());
+  if (!headers.some(Boolean)) return [];
+
+  return bodyRows
+    .filter((row) => row.some((cell) => String(cell || "").trim() !== ""))
+    .map((row) => {
+      const obj = {};
       headers.forEach((header, index) => {
-        row[header] = (values[index] ?? "").trim();
+        if (!header) return;
+        obj[header] = row[index] ?? "";
       });
-
-      return row;
+      return obj;
     });
 }
 
@@ -177,22 +244,27 @@ function parseImportedChannelIds(value, channels) {
 }
 
 async function importRequirementsFromFile(file, channels) {
-  const lowerName = file.name.toLowerCase();
-  let rows = [];
+  const XLSX = await import("xlsx");
+  const buffer = await file.arrayBuffer();
+  let workbook;
 
-  if (lowerName.endsWith(".csv")) {
-    const text = await file.text();
-    rows = parseCsvText(text);
-  } else if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
-    const XLSX = await import("xlsx");
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const firstSheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[firstSheetName];
-    rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  } else {
-    throw new Error("Поддерживаются только CSV, XLSX и XLS");
+  try {
+    workbook = XLSX.read(buffer, {
+      type: "array",
+      cellDates: false,
+      dense: false,
+    });
+  } catch (error) {
+    throw new Error(error?.message || "Не удалось прочитать Excel-файл");
   }
+
+  const firstSheetName = workbook?.SheetNames?.[0];
+  const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+  if (!firstSheetName || !sheet) {
+    throw new Error("Ошибка при импорте листа");
+  }
+
+  const rows = rowsFromWorksheet(sheet, XLSX);
 
   if (!rows.length) {
     throw new Error("Файл пустой или не содержит строк для импорта");
@@ -200,7 +272,7 @@ async function importRequirementsFromFile(file, channels) {
 
   return rows.map((row, index) => {
     const weekStart = getClosestWeekStart(
-      row["Неделя с"] || formatDate(getMonday())
+      normalizeImportedDate(row["Неделя с"], XLSX) || formatDate(getMonday())
     );
     const range = getWeekRange(weekStart);
     const fixedModeRaw =
@@ -224,8 +296,11 @@ async function importRequirementsFromFile(file, channels) {
       audience: row["База"] || AUDIENCE_OPTIONS[0],
       priority: row["Приоритет"] || "3",
       hasFixedDates: fixedModeRaw,
-      fixedStartDate: row["Дата с"] || "",
-      fixedEndDate: row["Дата до"] || row["Дата с"] || "",
+      fixedStartDate: normalizeImportedDate(row["Дата с"], XLSX) || "",
+      fixedEndDate:
+        normalizeImportedDate(row["Дата до"], XLSX) ||
+        normalizeImportedDate(row["Дата с"], XLSX) ||
+        "",
       desiredResult: row["Ожидаемый результат"] || "",
       comment: row["Комментарий"] || "",
       status: row["Статус"] || "новое",
@@ -482,7 +557,6 @@ export default function BusinessRequirementsTab({
   const [editingData, setEditingData] = useState(null);
 
   const fileInputRef = useRef(null);
-  const importTypeRef = useRef("xlsx");
 
   function handleOpenCreate() {
     setEditingId("new");
@@ -541,16 +615,23 @@ export default function BusinessRequirementsTab({
     if (!file) return;
 
     try {
+      if (toast) toast(`Читаю файл: ${file.name}`);
       const importedRequirements = await importRequirementsFromFile(
         file,
         channels
       );
+      if (toast) {
+        toast(
+          `Файл прочитан, найдено ${importedRequirements.length} бизнес-требовани(й)`
+        );
+      }
 
       const confirmReplace = window.confirm(
         `Импортировать ${importedRequirements.length} бизнес-требовани(й)? Текущий список будет заменён.`
       );
 
       if (confirmReplace) {
+        if (toast) toast("Применяю импорт бизнес-требований");
         requirements.forEach((item) => {
           if (typeof onDeleteRequirement === "function") {
             onDeleteRequirement(item.id);
@@ -565,8 +646,11 @@ export default function BusinessRequirementsTab({
 
         handleCloseEditor();
         if (toast) toast("Импорт завершён");
+      } else if (toast) {
+        toast("Импорт бизнес-требований отменён");
       }
     } catch (error) {
+      console.error("Business requirements import failed", error);
       alert(error?.message || "Не удалось импортировать файл");
     } finally {
       event.target.value = "";
@@ -574,17 +658,14 @@ export default function BusinessRequirementsTab({
   }
 
   useEffect(() => {
-    function handleImport(event) {
-      importTypeRef.current = event.detail?.type || "xlsx";
+    function handleImport() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
         fileInputRef.current.click();
       }
     }
 
-    function handleExport(event) {
-      const type = event.detail?.type || "xlsx";
-
+    function handleExport() {
       exportRequirementsToExcel(requirements, channels);
     }
 
@@ -656,7 +737,6 @@ export default function BusinessRequirementsTab({
           <button
             className="btn"
             onClick={() => {
-              importTypeRef.current = "xlsx";
               if (fileInputRef.current) {
                 fileInputRef.current.value = "";
                 fileInputRef.current.click();
