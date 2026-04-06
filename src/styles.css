@@ -1,18 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
-  --bg: #090909;
-  --sheet: #f7f3ee;
+  --bg: #ece7e1;
+  --sheet: #f7f4f0;
   --paper: #ffffff;
-  --paper-soft: #f4efe8;
-  --ink: #0c0c0c;
-  --ink-soft: #4b4b4b;
-  --line: #d9d2ca;
-  --line-strong: #121212;
-  --accent: #d61919;
-  --accent-dark: #a10f0f;
-  --accent-soft: #f6d8d8;
-  --shadow: 0 30px 90px rgba(0, 0, 0, 0.34);
+  --paper-soft: #f1ece6;
+  --ink: #171412;
+  --ink-soft: #6c635d;
+  --line: #d8d0c8;
+  --line-strong: #2a2521;
+  --accent: #b43a3a;
+  --accent-dark: #8d2e2e;
+  --accent-soft: #f0dddd;
+  --shadow: 0 18px 48px rgba(31, 23, 18, 0.12);
 }
 
 * {
@@ -26,8 +26,8 @@ body,
   min-height: 100%;
   font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   background:
-    radial-gradient(circle at top, rgba(214, 25, 25, 0.18), transparent 28%),
-    linear-gradient(180deg, #171717 0%, #090909 100%);
+    radial-gradient(circle at top, rgba(180, 58, 58, 0.08), transparent 30%),
+    linear-gradient(180deg, #f3eeea 0%, #ebe5de 100%);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -52,8 +52,8 @@ body {
   align-items: stretch;
   gap: 24px;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #f7e8e8 0%, #f4bcbc 100%);
-  border: 1.5px solid var(--line-strong);
+  background: linear-gradient(135deg, #f4ece8 0%, #efe1dc 100%);
+  border: 1px solid var(--line);
   border-radius: 30px 30px 14px 14px;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -69,13 +69,13 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border: 1px solid rgba(12, 12, 12, 0.25);
+  border: 1px solid rgba(23, 20, 18, 0.12);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .hero-subtitle {
@@ -104,9 +104,9 @@ body {
   align-items: stretch;
   gap: 12px;
   background:
-    linear-gradient(180deg, rgba(12, 12, 12, 0.02), rgba(12, 12, 12, 0.08)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.1));
-  border-left: 1.5px solid rgba(12, 12, 12, 0.12);
+    linear-gradient(180deg, rgba(23, 20, 18, 0.01), rgba(23, 20, 18, 0.05)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.18));
+  border-left: 1px solid rgba(23, 20, 18, 0.08);
 }
 
 .title {
@@ -121,7 +121,7 @@ body {
 
 .card {
   background: linear-gradient(180deg, var(--paper) 0%, var(--sheet) 100%);
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 0 0 26px 26px;
   box-shadow: var(--shadow);
   padding: 18px;
@@ -131,17 +131,17 @@ body {
 .card::before {
   content: "";
   display: block;
-  height: 6px;
+  height: 4px;
   margin: -18px -18px 18px;
-  background: linear-gradient(90deg, var(--accent) 0%, #1b1b1b 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, #d6ccc3 100%);
 }
 
 .section-card {
   background: rgba(255, 255, 255, 0.86);
-  border: 1.5px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: 18px;
   padding: 16px;
-  box-shadow: 0 10px 20px rgba(12, 12, 12, 0.05);
+  box-shadow: 0 8px 18px rgba(31, 23, 18, 0.04);
 }
 
 .tabs {
@@ -152,8 +152,8 @@ body {
 }
 
 .tab {
-  border: 1.5px solid var(--line-strong);
-  background: transparent;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.64);
   color: var(--ink);
   border-radius: 999px;
   padding: 11px 18px;
@@ -168,13 +168,14 @@ body {
 
 .tab:hover {
   transform: translateY(-1px);
-  background: #111111;
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--ink);
 }
 
 .tab-active {
-  background: var(--ink);
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
 
 .toolbar {
@@ -197,7 +198,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid #cfc5bc;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   border-radius: 14px;
@@ -234,8 +235,8 @@ label {
 
 .btn,
 .btn-small {
-  border: 1.5px solid var(--line-strong);
-  background: transparent;
+  border: 1px solid #cfc5bc;
+  background: rgba(255, 255, 255, 0.82);
   color: var(--ink);
   border-radius: 999px;
   cursor: pointer;
@@ -259,15 +260,15 @@ label {
 .btn:hover,
 .btn-small:hover {
   transform: translateY(-1px);
-  background: var(--ink);
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(12, 12, 12, 0.14);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgba(31, 23, 18, 0.08);
 }
 
 .btn-primary {
   background: var(--accent);
   color: #fff;
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 
 .btn-primary:hover {
@@ -289,7 +290,7 @@ label {
 .table-wrap {
   width: 100%;
   overflow: auto;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.9);
 }
@@ -304,15 +305,15 @@ label {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #111111;
-  color: #ffffff;
+  background: #eee7e0;
+  color: #4d443f;
   text-align: left;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 12px 14px;
-  border-bottom: 1px solid #111111;
+  border-bottom: 1px solid #ddd4cb;
 }
 
 .crm-table tbody td {
@@ -328,7 +329,7 @@ label {
 }
 
 .crm-table tbody tr:hover {
-  background: #fff4f4;
+  background: #faf7f3;
 }
 
 .actions {
@@ -343,8 +344,8 @@ label {
   gap: 5px;
   border-radius: 999px;
   padding: 4px 9px;
-  background: #111111;
-  color: #ffffff;
+  background: #f1ebe4;
+  color: #433934;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -390,7 +391,7 @@ label {
   overflow: auto;
   background: linear-gradient(180deg, var(--paper) 0%, var(--sheet) 100%);
   border-radius: 26px;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
   box-shadow: var(--shadow);
   padding: 24px;
 }
@@ -450,18 +451,18 @@ label {
   display: grid;
   gap: 1px;
   overflow: auto;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 22px;
-  background: #111111;
+  background: #ddd4cb;
 }
 
 .calendar-header {
-  background: #141414;
+  background: #e8e0d8;
   padding: 8px 6px;
   min-height: 56px;
   font-size: 11px;
   font-weight: 700;
-  color: #ffffff;
+  color: #574e48;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -473,13 +474,13 @@ label {
 .calendar-pressure {
   font-size: 11px;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--ink);
 }
 
 .pressure-low,
 .pressure-medium,
 .pressure-high {
-  background: #1b1b1b;
+  background: #e8e0d8;
 }
 
 .calendar-row-title {
@@ -498,11 +499,11 @@ label {
 }
 
 .calendar-cell-active {
-  background: #f6d8d8;
+  background: #f3e4e4;
 }
 
 .calendar-cell-conflict {
-  background: #d61919;
+  background: #dba5a5;
 }
 
 .sticky-col {

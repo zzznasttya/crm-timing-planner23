@@ -374,15 +374,6 @@ function AppInner() {
           <div className="hero-copy">
             <div className="hero-kicker">Editorial CRM workspace</div>
             <div className="title">CRM Timing Planner</div>
-            <div
-              className="hero-subtitle"
-              style={{
-                marginTop: "10px",
-              }}
-            >
-              Плотный, управляемый план запусков с правилами, требованиями и
-              расчётом БКП.
-            </div>
             <div className="hero-meta">Тайминг актуален на {todayLabel}</div>
           </div>
           <div className="hero-actions">
@@ -517,8 +508,8 @@ function AppInner() {
               overflow: "hidden",
               cursor: "pointer",
               boxShadow: mascotHover
-                ? "0 10px 36px rgba(220,38,38,0.4),0 4px 12px rgba(0,0,0,0.18)"
-                : "0 6px 24px rgba(220,38,38,0.28),0 2px 8px rgba(0,0,0,0.12)",
+                ? "0 10px 30px rgba(180,58,58,0.22),0 4px 12px rgba(0,0,0,0.12)"
+                : "0 6px 20px rgba(180,58,58,0.14),0 2px 8px rgba(0,0,0,0.08)",
               transition: "box-shadow 0.18s",
             }}
           >
@@ -545,7 +536,7 @@ function AppInner() {
                 position: "absolute",
                 top: "-2px",
                 right: "-2px",
-                background: "#d61919",
+                background: "#b43a3a",
                 color: "#fff",
                 fontSize: "10px",
                 fontWeight: 800,
@@ -556,7 +547,7 @@ function AppInner() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 2px 8px rgba(214,25,25,0.45)",
+                boxShadow: "0 2px 8px rgba(180,58,58,0.28)",
               }}
             >
               {activeRulesCount}
@@ -573,7 +564,7 @@ function AppInner() {
               position: "fixed",
               inset: 0,
               zIndex: 290,
-              background: "rgba(0,0,0,0.2)",
+              background: "rgba(28,24,21,0.16)",
             }}
             onClick={() => setAssistantOpen(false)}
           />
@@ -585,10 +576,10 @@ function AppInner() {
               width: "min(920px,calc(100vw - 56px))",
               maxHeight: "calc(100vh - 144px)",
               zIndex: 295,
-              background: "#fff",
+              background: "#fcfaf8",
               borderRadius: "20px",
-              border: "1px solid #e4e4e7",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.16)",
+              border: "1px solid #d8d0c8",
+              boxShadow: "0 20px 50px rgba(31,23,18,0.12)",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
@@ -602,9 +593,9 @@ function AppInner() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 padding: "14px 18px",
-                borderBottom: "1px solid #e4e4e7",
+                borderBottom: "1px solid #e7dfd7",
                 flexShrink: 0,
-                background: "#f6f0ea",
+                background: "#f5f0eb",
               }}
             >
               <div
@@ -617,7 +608,7 @@ function AppInner() {
                     borderRadius: "50%",
                     overflow: "hidden",
                     flexShrink: 0,
-                    boxShadow: "0 3px 10px rgba(220,38,38,0.28)",
+                    boxShadow: "0 3px 10px rgba(180,58,58,0.14)",
                   }}
                 >
                   <img
@@ -649,7 +640,7 @@ function AppInner() {
                     }}
                   >
                     {activeRulesCount > 0 ? (
-                      <span style={{ color: "#d61919", fontWeight: 700 }}>
+                      <span style={{ color: "#b43a3a", fontWeight: 700 }}>
                         {activeRulesCount} правил активно
                       </span>
                     ) : (
