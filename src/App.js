@@ -126,7 +126,7 @@ function AppInner() {
 
   function handleImportLaunches(imported) {
     pushSnapshot();
-    imported.forEach((l) => addLaunch(l));
+    replaceLaunches(Array.isArray(imported) ? imported : []);
     toast("Импортировано " + imported.length + " запусков");
   }
 

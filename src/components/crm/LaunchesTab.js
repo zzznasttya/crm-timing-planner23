@@ -111,6 +111,39 @@ function rowsFromWorksheet(sheet, XLSX) {
     }
   }
 
+  const denseData = Array.isArray(sheet)
+    ? sheet
+    : Array.isArray(sheet["!data"])
+    ? sheet["!data"]
+    : null;
+
+  if (denseData && denseData.length >= 2) {
+    const denseMatrix = denseData.map((row) =>
+      Array.isArray(row)
+        ? row.map((cell) => cell?.w ?? cell?.v ?? "")
+        : []
+    );
+
+    const [headerRow, ...bodyRows] = denseMatrix;
+    const headers = headerRow.map((cell) => String(cell || "").trim());
+    if (headers.some(Boolean)) {
+      const rows = bodyRows
+        .filter((row) => row.some((cell) => String(cell || "").trim() !== ""))
+        .map((row) => {
+          const obj = {};
+          headers.forEach((header, index) => {
+            if (!header) return;
+            obj[header] = row[index] ?? "";
+          });
+          return obj;
+        });
+
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+  }
+
   const ref = sheet["!ref"];
   if (!ref) return [];
 
@@ -222,6 +255,7 @@ async function importLaunchesFromFile(file, channels) {
       type: "array",
       cellDates: true,
       raw: false,
+      dense: true,
     });
     rows = rowsFromWorksheet(wb.Sheets[wb.SheetNames[0]], XLSX);
   }
@@ -252,6 +286,12 @@ async function importLaunchesFromFile(file, channels) {
         startDate,
         duration,
         endDate: explicitEndDate || calculateEndDate(startDate, duration),
+        earliestStartDate:
+          normalizeImportedDate(getImportedValue(r, ["Ранняя дата"]), XLSX) ||
+          startDate,
+        latestStartDate:
+          normalizeImportedDate(getImportedValue(r, ["Поздняя дата"]), XLSX) ||
+          startDate,
         platform: getImportedValue(r, ["Платформа"]) || "АМ+АО",
         audience: getImportedValue(r, ["База", "Отбор"]) || "",
         priority: getImportedValue(r, ["Приоритет"]) || "Средний",
@@ -1420,19 +1460,6 @@ export default function LaunchesTab({
 
           <button className="btn btn-primary" onClick={handleBuildDraft}>
             Собрать черновик
-          </button>
-
-          <button
-            className="btn"
-            onClick={() => {
-              importTypeRef.current = "csv";
-              if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-                fileInputRef.current.click();
-              }
-            }}
-          >
-            Импорт CSV
           </button>
 
           <button
