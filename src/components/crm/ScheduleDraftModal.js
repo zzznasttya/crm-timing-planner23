@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { getChannelName } from "../../lib/crm-store";
+import { formatDisplayDate, getChannelName } from "../../lib/crm-store";
 
 function toneStyle(tone) {
   if (tone === "positive") return { color: "#166534", background: "#dcfce7" };
@@ -157,8 +157,12 @@ export default function ScheduleDraftModal({
                           </td>
                           <td style={{ fontWeight: 700 }}>{launch.game}</td>
                           <td>{getChannelName(launch.channelId, channels)}</td>
-                          <td className="small">{launch.startDate}</td>
-                          <td className="small">{launch.endDate}</td>
+                          <td className="small">
+                            {formatDisplayDate(launch.startDate)}
+                          </td>
+                          <td className="small">
+                            {formatDisplayDate(launch.endDate)}
+                          </td>
                           <td>{launch.duration}</td>
                           <td>{launch.audience}</td>
                           <td>{launch.priority}</td>
@@ -167,8 +171,14 @@ export default function ScheduleDraftModal({
                               {planning.score ?? launch._score ?? "—"}
                             </div>
                             <div className="small muted">
-                              Окно: {planning.windowStart || launch.earliestStartDate} -{" "}
-                              {planning.windowEnd || launch.latestStartDate}
+                              Окно:{" "}
+                              {formatDisplayDate(
+                                planning.windowStart || launch.earliestStartDate
+                              )}{" "}
+                              —{" "}
+                              {formatDisplayDate(
+                                planning.windowEnd || launch.latestStartDate
+                              )}
                             </div>
                           </td>
                           <td style={{ minWidth: "300px" }}>
@@ -211,7 +221,7 @@ export default function ScheduleDraftModal({
                                   {alternatives
                                     .map(
                                       (item) =>
-                                        `${item.startDate} (${item.score})`
+                                        `${formatDisplayDate(item.startDate)} (${item.score})`
                                     )
                                     .join(", ")}
                                 </div>

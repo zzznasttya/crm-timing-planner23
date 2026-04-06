@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "./Toast";
-import { getChannelDisplayName } from "../../lib/crm-store";
+import { formatDisplayDate, getChannelDisplayName } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
   getCurrentWeekStart,
@@ -53,9 +53,11 @@ function getChannelNames(channelIds, channels) {
 function getFixedDateLabel(item) {
   if (item.hasFixedDates !== "yes") return "Нет";
   if (item.fixedStartDate && item.fixedEndDate) {
-    return `${item.fixedStartDate} - ${item.fixedEndDate}`;
+    return `${formatDisplayDate(item.fixedStartDate)} - ${formatDisplayDate(
+      item.fixedEndDate
+    )}`;
   }
-  if (item.fixedStartDate) return item.fixedStartDate;
+  if (item.fixedStartDate) return formatDisplayDate(item.fixedStartDate);
   return "Да";
 }
 
@@ -428,7 +430,8 @@ function RequirementInlineForm({
             onChange={(e) => upd("weekStart", e.target.value)}
           />
           <div style={{ fontSize: "12px", color: "#71717a", marginTop: "6px" }}>
-            {selectedWeekRange.weekStart} — {selectedWeekRange.weekEnd}
+            {formatDisplayDate(selectedWeekRange.weekStart)} —{" "}
+            {formatDisplayDate(selectedWeekRange.weekEnd)}
           </div>
         </div>
 
@@ -1132,7 +1135,8 @@ export default function BusinessRequirementsTab({
                         />
                       </td>
                       <td>
-                        {item.weekStart} — {item.weekEnd}
+                        {formatDisplayDate(item.weekStart)} —{" "}
+                        {formatDisplayDate(item.weekEnd)}
                       </td>
                       <td>{item.game}</td>
                       <td>{getChannelNames(item.channelIds, channels)}</td>

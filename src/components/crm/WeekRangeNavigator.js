@@ -1,5 +1,6 @@
 import React from "react";
 import { addDays, format, startOfWeek } from "date-fns";
+import { formatDisplayDate } from "../../lib/crm-store";
 
 export const WEEK_RANGE_OPTIONS = [
   { value: "1w", label: "1 неделя", days: 7 },
@@ -54,7 +55,8 @@ export default function WeekRangeNavigator({
           →
         </button>
         <div className="calendar-range">
-          {format(start, "dd.MM.yyyy")} — {format(end, "dd.MM.yyyy")}
+          {formatDisplayDate(format(start, "yyyy-MM-dd"))} —{" "}
+          {formatDisplayDate(format(end, "yyyy-MM-dd"))}
         </div>
       </div>
 

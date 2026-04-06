@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { extractAssistantActions } from "../../lib/assistant/rule-extractor";
-import { GAMES } from "../../lib/crm-store";
+import { formatDisplayDate, GAMES } from "../../lib/crm-store";
 
 function badgeStyle(status) {
   if (status === "active") {
@@ -39,11 +39,15 @@ function formatWindow(dateWindow) {
     const start = dateWindow.fixedStartDate || "";
     const end = dateWindow.fixedEndDate || start;
     if (!start) return "";
-    return start === end ? start : `${start} - ${end}`;
+    return start === end
+      ? formatDisplayDate(start)
+      : `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
   }
 
   if (dateWindow.weekStart && dateWindow.weekEnd) {
-    return `${dateWindow.weekStart} - ${dateWindow.weekEnd}`;
+    return `${formatDisplayDate(dateWindow.weekStart)} - ${formatDisplayDate(
+      dateWindow.weekEnd
+    )}`;
   }
 
   return "";

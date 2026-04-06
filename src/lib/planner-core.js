@@ -1,5 +1,9 @@
 import { format, parseISO, eachDayOfInterval } from "date-fns";
-import { detectConflicts, calculateEndDate } from "./crm-store";
+import {
+  detectConflicts,
+  calculateEndDate,
+  formatDisplayDate,
+} from "./crm-store";
 import { normalizeAudience } from "./requirements-domain";
 import {
   compileAssistantRules,
@@ -60,6 +64,13 @@ function getPriorityLabel(priority) {
   if (tier === "high") return "Высокий";
   if (tier === "medium") return "Средний";
   return "Низкий";
+}
+
+function normalizeLaunchPriority(priority) {
+  const normalized = String(priority ?? "").trim();
+  return ["0", "1", "2", "3", "4", "5"].includes(normalized)
+    ? normalized
+    : "3";
 }
 
 function daysBetween(from, to) {
@@ -294,7 +305,9 @@ function scoreCandidate({
     buildBreakdownItem(
       "Позиция в окне",
       placementPreferenceScore,
-      `Слот находится на ${windowIndex + 1}-й позиции в окне ${windowStart} - ${windowEnd}.`,
+      `Слот находится на ${windowIndex + 1}-й позиции в окне ${formatDisplayDate(
+        windowStart
+      )} - ${formatDisplayDate(windowEnd)}.`,
       placementPreferenceScore >= 10 ? "positive" : "neutral"
     ),
     buildBreakdownItem(
@@ -466,6 +479,28 @@ export function buildSchedule({
   const pool = [...existingLaunches];
   const proposed = [];
   const skipped = [];
+  const weeklyCoverage = new Map();
+
+  function getWeekCoverageSet(weekStart, weekEnd) {
+    const key = `${weekStart}:${weekEnd}`;
+    if (!weeklyCoverage.has(key)) {
+      const usedChannelIds = new Set(
+        pool
+          .filter(
+            (launch) =>
+              launch.channelId &&
+              launch.startDate &&
+              launch.endDate &&
+              launch.startDate <= weekEnd &&
+              launch.endDate >= weekStart
+          )
+          .map((launch) => launch.channelId)
+      );
+      weeklyCoverage.set(key, usedChannelIds);
+    }
+
+    return weeklyCoverage.get(key);
+  }
 
   const sorted = [...requirements].sort(
     (a, b) => Number(a.priority ?? 3) - Number(b.priority ?? 3)
@@ -490,11 +525,23 @@ export function buildSchedule({
       continue;
     }
 
+    const coverageSet = getWeekCoverageSet(
+      req.weekStart || windowStart,
+      req.weekEnd || windowEnd
+    );
+
     let targetChannels = [...channels];
     if (Array.isArray(req.channelIds) && req.channelIds.length > 0) {
       targetChannels = targetChannels.filter((channel) =>
         req.channelIds.includes(channel.id)
       );
+    } else {
+      const uncoveredChannels = targetChannels.filter(
+        (channel) => !coverageSet.has(channel.id)
+      );
+      if (uncoveredChannels.length > 0) {
+        targetChannels = uncoveredChannels;
+      }
     }
 
     if (targetChannels.length === 0) {
@@ -505,7 +552,7 @@ export function buildSchedule({
       continue;
     }
 
-    let bestLaunch = null;
+    const plannedLaunches = [];
     const channelAttempts = [];
 
     for (const channel of targetChannels) {
@@ -564,7 +611,7 @@ export function buildSchedule({
         duration: candidate.duration,
         platform: "АМ+АО",
         audience: candidate.audience,
-        priority: getPriorityLabel(req.priority),
+        priority: normalizeLaunchPriority(req.priority),
         planningStatus: "бэклог",
         sentBaseCount: "",
         campaignType: "CRM акция",
@@ -599,13 +646,13 @@ export function buildSchedule({
         score: bestSlot.score,
         launch: newLaunch,
       });
-
-      if (!bestLaunch || Number(newLaunch._score || 0) > Number(bestLaunch._score || 0)) {
-        bestLaunch = newLaunch;
-      }
+      plannedLaunches.push(newLaunch);
+      proposed.push(newLaunch);
+      pool.push(newLaunch);
+      coverageSet.add(channel.id);
     }
 
-    if (!bestLaunch) {
+    if (!plannedLaunches.length) {
       skipped.push({
         req,
         reason: channelAttempts[0]?.reason || "Нет подходящего канала или слота",
@@ -614,13 +661,20 @@ export function buildSchedule({
       continue;
     }
 
-    bestLaunch._planningMeta = {
-      ...bestLaunch._planningMeta,
-      channelAttempts,
-    };
+    plannedLaunches.forEach((launch) => {
+      launch._planningMeta = {
+        ...launch._planningMeta,
+        channelAttempts,
+      };
+    });
 
-    proposed.push(bestLaunch);
-    pool.push(bestLaunch);
+    if (plannedLaunches.length < targetChannels.length) {
+      skipped.push({
+        req,
+        reason: "Не все каналы удалось поставить без пересечений",
+        details: channelAttempts,
+      });
+    }
   }
 
   proposed.sort((a, b) => {

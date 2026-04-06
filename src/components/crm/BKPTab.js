@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getChannelName } from "../../lib/crm-store";
+import { formatDisplayDate, getChannelName } from "../../lib/crm-store";
 
 const BKP_STORAGE_KEY = "crm-bkp-limit-v1";
 const DEFAULT_LIMIT = 30000000;
@@ -181,7 +181,7 @@ export default function BKPTab({ launches, channels }) {
                 <tr key={launch.id}>
                   <td>{launch.game || "—"}</td>
                   <td>{getChannelName(launch.channelId, channels)}</td>
-                  <td>{launch.startDate || "—"}</td>
+                  <td>{formatDisplayDate(launch.startDate)}</td>
                   <td>{launch.planningStatus || "—"}</td>
                   <td>{formatNumber(launch.sentBaseCount)}</td>
                   <td>{launch.comment || "—"}</td>

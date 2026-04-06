@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { addDays, format, startOfWeek } from "date-fns";
 import {
   calculateCRMPressure,
+  formatDisplayDate,
   getChannelName,
   GAMES,
 } from "../../lib/crm-store";
@@ -71,8 +72,8 @@ export default function CalendarTab({ launches, channels }) {
             →
           </button>
           <div className="calendar-range">
-            {format(days[0], "dd.MM.yyyy")} —{" "}
-            {format(days[days.length - 1], "dd.MM.yyyy")}
+            {formatDisplayDate(format(days[0], "yyyy-MM-dd"))} —{" "}
+            {formatDisplayDate(format(days[days.length - 1], "yyyy-MM-dd"))}
           </div>
         </div>
 
@@ -103,7 +104,7 @@ export default function CalendarTab({ launches, channels }) {
               key={dayString}
               className={`calendar-header pressure-${level}`}
             >
-              <div>{format(day, "dd.MM")}</div>
+              <div>{format(day, "dd.MM.yy")}</div>
               <div className="calendar-pressure">{pressure}</div>
             </div>
           );
@@ -128,9 +129,11 @@ export default function CalendarTab({ launches, channels }) {
                   className={getCellClassName(launch, dayString)}
                   title={
                     isLaunchActiveOnDay(launch, dayString)
-                      ? `${getLaunchTitle(launch)}\n${launch.startDate} — ${
+                      ? `${getLaunchTitle(launch)}\n${formatDisplayDate(
+                          launch.startDate
+                        )} — ${formatDisplayDate(
                           launch.endDate
-                        }\n${getChannelName(launch.channelId, channels)}\n${
+                        )}\n${getChannelName(launch.channelId, channels)}\n${
                           launch.audience || "—"
                         }`
                       : ""

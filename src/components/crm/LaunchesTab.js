@@ -4,6 +4,7 @@ import {
   calculateEndDate,
   detectConflicts,
   getChannelDisplayName,
+  formatDisplayDate,
 } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
@@ -11,9 +12,18 @@ import WeekRangeNavigator, {
 } from "./WeekRangeNavigator";
 
 const PLATFORMS = ["АМ", "АО", "АМ+АО"];
-const PRIORITIES = ["Высокий", "Средний", "Низкий"];
+const PRIORITIES = ["0", "1", "2", "3", "4", "5"];
 const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "пилот / тест"];
 const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
+
+function normalizeLaunchPriority(value) {
+  const normalized = String(value ?? "").trim();
+  if (PRIORITIES.includes(normalized)) return normalized;
+  if (normalized === "Высокий") return "1";
+  if (normalized === "Средний") return "3";
+  if (normalized === "Низкий") return "5";
+  return "3";
+}
 
 function getImportedValue(row, keys) {
   for (const key of keys) {
@@ -285,7 +295,9 @@ async function importLaunchesFromFile(file, channels) {
           startDate,
         platform: String(getImportedValue(r, ["Платформа"]) || "АМ+АО"),
         audience: String(getImportedValue(r, ["База", "Отбор"]) || ""),
-        priority: String(getImportedValue(r, ["Приоритет"]) || "Средний"),
+        priority: normalizeLaunchPriority(
+          getImportedValue(r, ["Приоритет"]) || "3"
+        ),
         planningStatus: String(getImportedValue(r, ["Статус"]) || "бэклог"),
         sentBaseCount: Number(
           getImportedValue(r, ["База коммуникаций", "База комм", "БКП база"])
@@ -388,8 +400,9 @@ function statusSelectStyle(status) {
 }
 
 function priorityClass(priority) {
-  if (priority === "Высокий") return "badge badge-red";
-  if (priority === "Средний") return "badge badge-orange";
+  const value = Number(normalizeLaunchPriority(priority));
+  if (value <= 1) return "badge badge-red";
+  if (value <= 3) return "badge badge-orange";
   return "badge badge-blue";
 }
 
@@ -420,7 +433,7 @@ function makeNewLaunch(channels) {
     endDate: calculateEndDate(startDate, duration),
     platform: "АМ+АО",
     audience: "",
-    priority: "Средний",
+    priority: "3",
     planningStatus: "бэклог",
     sentBaseCount: "",
     comment: "",
@@ -434,9 +447,7 @@ function makeNewLaunch(channels) {
 }
 
 function formatRuDate(dateString) {
-  if (!dateString) return "—";
-  const [year, month, day] = dateString.split("-");
-  return `${day}.${month}.${year}`;
+  return formatDisplayDate(dateString);
 }
 
 function shiftDateByDays(dateString, days) {
@@ -594,7 +605,9 @@ function LaunchForm({ value, channels, onChange }) {
           onChange={(e) => update("priority", e.target.value)}
         >
           {PRIORITIES.map((p) => (
-            <option key={p}>{p}</option>
+            <option key={p} value={p}>
+              {p}
+            </option>
           ))}
         </select>
       </div>
@@ -1006,7 +1019,9 @@ function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
             onChange={(e) => upd("priority", e.target.value)}
           >
             {PRIORITIES.map((p) => (
-              <option key={p}>{p}</option>
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
           </select>
         </div>
@@ -1232,7 +1247,7 @@ export default function LaunchesTab({
       game: nextLaunch.game || GAMES[0],
       planningStatus: normalizeStatus(nextLaunch.planningStatus),
       platform: nextLaunch.platform || "АМ+АО",
-      priority: nextLaunch.priority || "Средний",
+      priority: normalizeLaunchPriority(nextLaunch.priority),
       sentBaseCount:
         nextLaunch.sentBaseCount === "" || nextLaunch.sentBaseCount == null
           ? ""
@@ -1408,7 +1423,7 @@ export default function LaunchesTab({
       return (
         <select
           {...commonProps}
-          value={editingCellValue || launch.priority || "Средний"}
+          value={editingCellValue || normalizeLaunchPriority(launch.priority)}
           onChange={(e) => {
             setEditingCellValue(e.target.value);
             saveCellEdit(launch, field, e.target.value);
@@ -1925,14 +1940,14 @@ export default function LaunchesTab({
                           {renderEditableCell(
                             launch,
                             "startDate",
-                            launch.startDate
+                            formatRuDate(launch.startDate)
                           )}
                           {renderEditableCell(
                             launch,
                             "duration",
                             launch.duration
                           )}
-                          <td>{launch.endDate}</td>
+                          <td>{formatRuDate(launch.endDate)}</td>
                           {renderEditableCell(
                             launch,
                             "platform",

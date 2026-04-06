@@ -39,6 +39,25 @@ export function calculateEndDate(startDate, duration) {
   return start.toISOString().slice(0, 10);
 }
 
+export function formatDisplayDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "—";
+
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, yyyy, mm, dd] = match;
+    return `${dd}.${mm}.${yyyy.slice(2)}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const yy = String(parsed.getFullYear()).slice(2);
+  return `${dd}.${mm}.${yy}`;
+}
+
 export function getChannelTitle(channel = {}) {
   return channel.title || channel.name || "";
 }
