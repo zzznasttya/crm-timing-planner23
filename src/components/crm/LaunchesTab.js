@@ -66,6 +66,45 @@ function normalizeImportedDate(value, XLSX) {
   return "";
 }
 
+function rowsFromWorksheet(sheet, XLSX) {
+  if (!sheet) return [];
+
+  const direct = XLSX.utils.sheet_to_json(sheet, {
+    defval: "",
+  });
+  if (Array.isArray(direct) && direct.length > 0) {
+    return direct;
+  }
+
+  const matrix = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+    raw: false,
+  });
+
+  if (!Array.isArray(matrix) || matrix.length < 2) {
+    return [];
+  }
+
+  const [headerRow, ...bodyRows] = matrix;
+  const headers = (headerRow || []).map((cell) => String(cell || "").trim());
+  if (!headers.some(Boolean)) {
+    return [];
+  }
+
+  return bodyRows
+    .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || "").trim() !== ""))
+    .map((row) => {
+      const obj = {};
+      headers.forEach((header, index) => {
+        if (!header) return;
+        obj[header] = row[index] ?? "";
+      });
+      return obj;
+    });
+}
+
 function buildExportRows(launches, channels) {
   return launches.map((l) => ({
     Игра: l.game || "",
@@ -140,9 +179,7 @@ async function importLaunchesFromFile(file, channels) {
   } else {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
-    rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
-      defval: "",
-    });
+    rows = rowsFromWorksheet(wb.Sheets[wb.SheetNames[0]], XLSX);
   }
   if (!rows.length) throw new Error("Файл пустой");
 
