@@ -1259,6 +1259,7 @@ export default function LaunchesTab({
   const [recommendations, setRecommendations] = useState([]);
   const [scheduleDraft, setScheduleDraft] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [lastSelectedId, setLastSelectedId] = useState(null);
   const [editingCell, setEditingCell] = useState(null);
   const [editingCellValue, setEditingCellValue] = useState("");
   const [bulkEdit, setBulkEdit] = useState({
@@ -1338,10 +1339,47 @@ export default function LaunchesTab({
       }
       return next;
     });
+    setLastSelectedId(id);
+  }
+
+  function handleSelectChange(event, id) {
+    const shouldSelect = event.target.checked;
+    const isRangeSelection = event.nativeEvent?.shiftKey;
+    const visibleIds = filtered.map((item) => item.id);
+
+    if (isRangeSelection && lastSelectedId && visibleIds.includes(lastSelectedId)) {
+      const startIndex = visibleIds.indexOf(lastSelectedId);
+      const endIndex = visibleIds.indexOf(id);
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        const [from, to] =
+          startIndex <= endIndex
+            ? [startIndex, endIndex]
+            : [endIndex, startIndex];
+        const rangeIds = visibleIds.slice(from, to + 1);
+
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((rangeId) => {
+            if (shouldSelect) {
+              next.add(rangeId);
+            } else {
+              next.delete(rangeId);
+            }
+          });
+          return next;
+        });
+        setLastSelectedId(id);
+        return;
+      }
+    }
+
+    toggleSelect(id);
   }
 
   function clearSelection() {
     setSelectedIds(new Set());
+    setLastSelectedId(null);
   }
 
   function updateBulkField(field, value) {
@@ -2014,7 +2052,9 @@ export default function LaunchesTab({
                             <input
                               type="checkbox"
                               checked={selectedIds.has(launch.id)}
-                              onChange={() => toggleSelect(launch.id)}
+                              onChange={(event) =>
+                                handleSelectChange(event, launch.id)
+                              }
                               style={{ cursor: "pointer" }}
                             />
                           </td>
@@ -2058,7 +2098,9 @@ export default function LaunchesTab({
                             <input
                               type="checkbox"
                               checked={selectedIds.has(launch.id)}
-                              onChange={() => toggleSelect(launch.id)}
+                              onChange={(event) =>
+                                handleSelectChange(event, launch.id)
+                              }
                               style={{ cursor: "pointer" }}
                             />
                           </td>
