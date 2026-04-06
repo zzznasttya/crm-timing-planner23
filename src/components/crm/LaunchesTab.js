@@ -1425,6 +1425,19 @@ export default function LaunchesTab({
           <button
             className="btn"
             onClick={() => {
+              importTypeRef.current = "csv";
+              if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+                fileInputRef.current.click();
+              }
+            }}
+          >
+            Импорт CSV
+          </button>
+
+          <button
+            className="btn"
+            onClick={() => {
               importTypeRef.current = "xlsx";
               if (fileInputRef.current) {
                 fileInputRef.current.value = "";
@@ -1466,7 +1479,7 @@ export default function LaunchesTab({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.xls"
+            accept={importTypeRef.current === "csv" ? ".csv" : ".xlsx,.xls"}
             style={{ display: "none" }}
             onChange={handleImportFileChange}
           />
