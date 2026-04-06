@@ -1,18 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
-  --bg: #ece7e1;
-  --sheet: #f7f4f0;
+  --bg: #eef0f2;
+  --sheet: #f7f8fa;
   --paper: #ffffff;
-  --paper-soft: #f1ece6;
-  --ink: #171412;
-  --ink-soft: #6c635d;
-  --line: #d8d0c8;
-  --line-strong: #2a2521;
+  --paper-soft: #f1f3f5;
+  --ink: #17181a;
+  --ink-soft: #666b72;
+  --line: #d7dbe0;
+  --line-strong: #23262b;
   --accent: #b43a3a;
   --accent-dark: #8d2e2e;
-  --accent-soft: #f0dddd;
-  --shadow: 0 18px 48px rgba(31, 23, 18, 0.12);
+  --accent-soft: #f1d9d9;
+  --shadow: 0 18px 48px rgba(20, 24, 32, 0.1);
 }
 
 * {
@@ -27,7 +27,7 @@ body,
   font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   background:
     radial-gradient(circle at top, rgba(180, 58, 58, 0.08), transparent 30%),
-    linear-gradient(180deg, #f3eeea 0%, #ebe5de 100%);
+    linear-gradient(180deg, #f7f8fa 0%, #edf0f3 100%);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -52,7 +52,7 @@ body {
   align-items: stretch;
   gap: 24px;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #f4ece8 0%, #efe1dc 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f2f4f7 100%);
   border: 1px solid var(--line);
   border-radius: 30px 30px 14px 14px;
   box-shadow: var(--shadow);
@@ -104,9 +104,9 @@ body {
   align-items: stretch;
   gap: 12px;
   background:
-    linear-gradient(180deg, rgba(23, 20, 18, 0.01), rgba(23, 20, 18, 0.05)),
+    linear-gradient(180deg, rgba(23, 24, 26, 0.01), rgba(23, 24, 26, 0.04)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.18));
-  border-left: 1px solid rgba(23, 20, 18, 0.08);
+  border-left: 1px solid rgba(23, 24, 26, 0.08);
 }
 
 .title {
@@ -133,7 +133,7 @@ body {
   display: block;
   height: 4px;
   margin: -18px -18px 18px;
-  background: linear-gradient(90deg, var(--accent) 0%, #d6ccc3 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, #e3e7eb 100%);
 }
 
 .section-card {
@@ -198,7 +198,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #cfc5bc;
+  border: 1px solid #d2d7dd;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   border-radius: 14px;
@@ -235,7 +235,7 @@ label {
 
 .btn,
 .btn-small {
-  border: 1px solid #cfc5bc;
+  border: 1px solid #d2d7dd;
   background: rgba(255, 255, 255, 0.82);
   color: var(--ink);
   border-radius: 999px;
@@ -306,19 +306,20 @@ label {
   top: 0;
   z-index: 1;
   background: #eee7e0;
-  color: #4d443f;
+  background: #f1f3f6;
+  color: #555c64;
   text-align: left;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 12px 14px;
-  border-bottom: 1px solid #ddd4cb;
+  border-bottom: 1px solid #dde2e7;
 }
 
 .crm-table tbody td {
   padding: 12px 14px;
-  border-bottom: 1px solid #ece5dd;
+  border-bottom: 1px solid #eceff3;
   vertical-align: top;
   font-size: 13px;
   color: var(--ink);
@@ -329,7 +330,7 @@ label {
 }
 
 .crm-table tbody tr:hover {
-  background: #faf7f3;
+  background: #f7f9fc;
 }
 
 .actions {
@@ -344,8 +345,8 @@ label {
   gap: 5px;
   border-radius: 999px;
   padding: 4px 9px;
-  background: #f1ebe4;
-  color: #433934;
+  background: #eef1f4;
+  color: #434a52;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -412,7 +413,7 @@ label {
 }
 
 .muted {
-  color: #69615a;
+  color: #6f7680;
 }
 
 .small {
@@ -453,16 +454,16 @@ label {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 22px;
-  background: #ddd4cb;
+  background: #e1e5ea;
 }
 
 .calendar-header {
-  background: #e8e0d8;
+  background: #f1f4f7;
   padding: 8px 6px;
   min-height: 56px;
   font-size: 11px;
   font-weight: 700;
-  color: #574e48;
+  color: #59616b;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -480,7 +481,7 @@ label {
 .pressure-low,
 .pressure-medium,
 .pressure-high {
-  background: #e8e0d8;
+  background: #f1f4f7;
 }
 
 .calendar-row-title {
