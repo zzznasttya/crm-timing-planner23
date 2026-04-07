@@ -764,6 +764,44 @@ function getRequirementTargetChannels(requirement, channels) {
   });
 }
 
+export function buildLaunchIdentityKey(launch, channels = []) {
+  const channel =
+    channels.find((item) => item.id === launch?.channelId) ||
+    channels.find((item) => item.id === launch?._planningMeta?.channelId) ||
+    null;
+  const channelKey = channel
+    ? getChannelIdentityKey(channel)
+    : `id:${launch?.channelId || ""}`;
+
+  return [
+    normalizeLooseText(launch?.game || ""),
+    channelKey,
+    String(launch?.startDate || ""),
+    String(launch?.endDate || ""),
+    normalizeLooseText(normalizeAudience(launch?.audience || "")),
+    normalizeLooseText(launch?.campaignType || ""),
+  ].join("::");
+}
+
+function dedupeLaunchesByIdentity(launches, channels = []) {
+  const byKey = new Map();
+
+  launches.forEach((launch) => {
+    const key = buildLaunchIdentityKey(launch, channels);
+    const currentScore = Number(launch?._score || launch?._planningMeta?.score || 0);
+    const existing = byKey.get(key);
+    const existingScore = Number(
+      existing?._score || existing?._planningMeta?.score || 0
+    );
+
+    if (!existing || currentScore > existingScore) {
+      byKey.set(key, launch);
+    }
+  });
+
+  return Array.from(byKey.values());
+}
+
 function buildProposedLaunch({
   requirement,
   channel,
@@ -1005,6 +1043,9 @@ export function buildSchedule({
   const proposed = [];
   const skipped = [];
   const weeklyCoverage = new Map();
+  const seenLaunchKeys = new Set(
+    existingLaunches.map((launch) => buildLaunchIdentityKey(launch, channels))
+  );
 
   function getWeekCoverageSet(weekStart, weekEnd) {
     const key = `${weekStart}:${weekEnd}`;
@@ -1157,6 +1198,18 @@ export function buildSchedule({
       const issues = detectConflicts(newLaunch, pool, channels);
       newLaunch.issues = issues;
       newLaunch.conflictStatus = issues.length ? "conflict" : "ok";
+
+      const launchIdentityKey = buildLaunchIdentityKey(newLaunch, channels);
+      if (seenLaunchKeys.has(launchIdentityKey)) {
+        channelAttempts.push({
+          channelId: channel.id,
+          reason: "Такой запуск уже есть в плане или среди существующих запусков",
+          blocked: true,
+          launch: newLaunch,
+        });
+        continue;
+      }
+
       channelAttempts.push({
         channelId: channel.id,
         reason: "Канал подходит",
@@ -1166,6 +1219,7 @@ export function buildSchedule({
       plannedLaunches.push(newLaunch);
       proposed.push(newLaunch);
       pool.push(newLaunch);
+      seenLaunchKeys.add(launchIdentityKey);
       coverageSet.add(channel.id);
     }
 
@@ -1206,7 +1260,7 @@ export function buildSchedule({
   });
 
   proposed.length = 0;
-  proposed.push(...optimizedProposed);
+  proposed.push(...dedupeLaunchesByIdentity(optimizedProposed, channels));
 
   proposed.sort((a, b) => {
     const scoreDiff = Number(b._score || 0) - Number(a._score || 0);

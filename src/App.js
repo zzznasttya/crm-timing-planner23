@@ -14,6 +14,7 @@ import { ToastProvider, useToast } from "./components/crm/Toast";
 import { useCRMStore } from "./lib/crm-store";
 import {
   buildSchedule,
+  buildLaunchIdentityKey,
   downloadLaunchesTemplate,
   downloadRequirementsTemplate,
 } from "./lib/planner-core";
@@ -34,6 +35,25 @@ function formatTodayLabel() {
     month: "2-digit",
     year: "numeric",
   }).format(new Date());
+}
+
+function dedupeLaunchesForStore(launches, channels) {
+  const byKey = new Map();
+
+  launches.forEach((launch) => {
+    const key = buildLaunchIdentityKey(launch, channels);
+    const currentScore = Number(launch?._score || launch?._planningMeta?.score || 0);
+    const existing = byKey.get(key);
+    const existingScore = Number(
+      existing?._score || existing?._planningMeta?.score || 0
+    );
+
+    if (!existing || currentScore > existingScore) {
+      byKey.set(key, launch);
+    }
+  });
+
+  return Array.from(byKey.values());
 }
 
 function AppInner() {
@@ -108,6 +128,13 @@ function AppInner() {
     missingCatalogChannels.forEach((channel) => addChannel(channel));
     setCatalogSeeded(true);
   }, [channels, addChannel, replaceChannels, catalogSeeded]);
+
+  useEffect(() => {
+    const dedupedLaunches = dedupeLaunchesForStore(launches, channels);
+    if (dedupedLaunches.length !== launches.length) {
+      replaceLaunches(dedupedLaunches);
+    }
+  }, [launches, channels, replaceLaunches]);
 
   // ── Undo ──
   function pushSnapshot() {
@@ -413,14 +440,27 @@ function AppInner() {
       return;
     }
 
+    const existingLaunchKeys = new Set(
+      launches.map((launch) => buildLaunchIdentityKey(launch, channels))
+    );
+    const uniqueAccepted = dedupeLaunchesForStore(accepted, channels).filter(
+      (launch) => !existingLaunchKeys.has(buildLaunchIdentityKey(launch, channels))
+    );
+
+    if (!uniqueAccepted.length) {
+      setScheduleDraft(null);
+      toast("Все принятые предложения уже есть в списке запусков");
+      return;
+    }
+
     const acceptedRequirementIds = new Set(
-      accepted
+      uniqueAccepted
         .map((launch) => launch._fromRequirementId)
         .filter(Boolean)
     );
 
     pushSnapshot();
-    replaceLaunches([...launches, ...accepted]);
+    replaceLaunches([...launches, ...uniqueAccepted]);
     if (acceptedRequirementIds.size > 0) {
       replaceRequirements(
         requirements.map((requirement) =>
@@ -434,7 +474,7 @@ function AppInner() {
     setActiveTab("launches");
     toast(
       "Добавлено " +
-        accepted.length +
+        uniqueAccepted.length +
         " запусков" +
         (acceptedRequirementIds.size
           ? `, требований учтено: ${acceptedRequirementIds.size}`
