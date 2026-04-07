@@ -3,12 +3,18 @@ import {
   detectConflicts,
   calculateEndDate,
   formatDisplayDate,
+  getChannelDisplayName,
+  getChannelSubtitle,
+  getChannelTitle,
 } from "./crm-store";
 import {
   normalizeAudience,
   PLANNABLE_REQUIREMENT_STATUSES,
 } from "./requirements-domain";
-import { getCatalogChannelEffectiveness } from "./channel-catalog";
+import {
+  findCatalogEntryForChannel,
+  getCatalogChannelEffectiveness,
+} from "./channel-catalog";
 import { getGamePlanningProfile } from "./game-catalog";
 import { getChannelPerformanceSnapshot } from "./performance-domain";
 import {
@@ -216,6 +222,108 @@ function daysBetween(from, to) {
 
 function isWinnersAudience(value) {
   return normalizeAudience(value || "") === "победители";
+}
+
+function getWinnerPreferredChannels(channels) {
+  const preferredKeys = ["wn-main", "push", "sms"];
+  const matched = [];
+  const seen = new Set();
+
+  preferredKeys.forEach((key) => {
+    const channel = channels.find(
+      (item) => findCatalogEntryForChannel(item)?.key === key
+    );
+    if (!channel) return;
+
+    const identityKey = getChannelIdentityKey(channel);
+    if (seen.has(identityKey)) return;
+    seen.add(identityKey);
+    matched.push(channel);
+  });
+
+  return matched;
+}
+
+function getChannelFamily(channel) {
+  const token = normalizeLooseText(
+    `${getChannelTitle(channel)} ${getChannelSubtitle(channel)} ${getChannelDisplayName(
+      channel
+    )}`
+  );
+
+  if (
+    token.includes("what s new") ||
+    token.includes("whats new") ||
+    token.includes("вн")
+  ) {
+    return "wn";
+  }
+
+  if (token.includes("попап") || token.includes("поп ап")) {
+    return "popup";
+  }
+
+  return "other";
+}
+
+function getChannelPairContext(channel) {
+  const token = normalizeLooseText(
+    `${getChannelTitle(channel)} ${getChannelSubtitle(channel)} ${getChannelDisplayName(
+      channel
+    )}`
+  );
+
+  if (
+    token.includes("главн") ||
+    token.includes("гэ") ||
+    token.includes("main")
+  ) {
+    return "main";
+  }
+
+  if (token.includes("платеж")) {
+    return "payments";
+  }
+
+  if (
+    token.includes("история операций") ||
+    token.includes("ио") ||
+    token.includes("history")
+  ) {
+    return "history";
+  }
+
+  return null;
+}
+
+function expandPairedChannels(sourceChannels, allChannels) {
+  const expanded = [...sourceChannels];
+  const seen = new Set(
+    sourceChannels.map((channel) => getChannelIdentityKey(channel))
+  );
+
+  sourceChannels.forEach((channel) => {
+    const family = getChannelFamily(channel);
+    const context = getChannelPairContext(channel);
+    if (!context || (family !== "wn" && family !== "popup")) return;
+
+    const counterpartFamily = family === "wn" ? "popup" : "wn";
+    const counterpart = allChannels.find(
+      (candidate) =>
+        getChannelFamily(candidate) === counterpartFamily &&
+        getChannelPairContext(candidate) === context
+    );
+
+    if (!counterpart) return;
+
+    const counterpartKey = getChannelIdentityKey(counterpart);
+    if (seen.has(counterpartKey)) return;
+
+    seen.add(counterpartKey);
+    expanded.push(counterpart);
+  });
+
+  return expanded;
 }
 
 function getNearestGapDays(candidate, launches) {
@@ -750,13 +858,23 @@ function getRequirementWindow(requirement) {
 }
 
 function getRequirementTargetChannels(requirement, channels) {
+  const winnersChannels = isWinnersAudience(requirement?.audience || "")
+    ? getWinnerPreferredChannels(channels)
+    : [];
+
   const source =
+    winnersChannels.length > 0
+      ? winnersChannels
+      : (
     Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0
       ? channels.filter((channel) => requirement.channelIds.includes(channel.id))
-      : [...channels];
+      : [...channels]
+        );
+
+  const pairedSource = expandPairedChannels(source, channels);
 
   const seen = new Set();
-  return source.filter((channel) => {
+  return pairedSource.filter((channel) => {
     const key = getChannelIdentityKey(channel);
     if (seen.has(key)) return false;
     seen.add(key);

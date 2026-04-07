@@ -20,6 +20,7 @@ export const EFFECTIVE_CHANNEL_CATALOG = [
   { key: "trainer-history", title: "Тренер", subtitle: "над историей операций", duration: 5, aliases: ["тренер над историей операций"] },
   { key: "banner-history", title: "Баннер над историей операций", subtitle: "баннер-растяжка", duration: 5, aliases: ["баннер над историей операций", "баннер растяжка история операций"] },
   { key: "push", title: "Пуш", subtitle: "", duration: 2, aliases: ["пуш", "push"] },
+  { key: "sms", title: "SMS", subtitle: "", duration: 2, aliases: ["sms", "смс"] },
   { key: "email", title: "E-mail", subtitle: "", duration: 5, aliases: ["e-mail", "email"] },
   { key: "digital-ticket", title: "Цифровой талон", subtitle: "", duration: 5, aliases: ["цифровой талон"] },
   { key: "chat-stories", title: "Сториз", subtitle: "в Чатах", duration: 5, aliases: ["сториз в чатах"] },

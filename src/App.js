@@ -105,6 +105,10 @@ function AppInner() {
 
   useEffect(() => {
     if (catalogSeeded) return;
+    if (preferences.disableCatalogAutoSeed) {
+      setCatalogSeeded(true);
+      return;
+    }
     const dedupedChannels = [];
     const seenChannelKeys = new Set();
 
@@ -128,7 +132,7 @@ function AppInner() {
 
     missingCatalogChannels.forEach((channel) => addChannel(channel));
     setCatalogSeeded(true);
-  }, [channels, addChannel, replaceChannels, catalogSeeded]);
+  }, [channels, addChannel, replaceChannels, catalogSeeded, preferences.disableCatalogAutoSeed]);
 
   useEffect(() => {
     const dedupedLaunches = dedupeLaunchesForStore(launches, channels);
@@ -169,7 +173,9 @@ function AppInner() {
       ...prev.slice(-9),
       {
         launches: launches.map((l) => ({ ...l })),
+        channels: channels.map((c) => ({ ...c })),
         requirements: requirements.map((r) => ({ ...r })),
+        preferences: { ...preferences },
       },
     ]);
   }
@@ -177,9 +183,14 @@ function AppInner() {
     if (!historyStack.length) return;
     const prev = historyStack[historyStack.length - 1];
     replaceLaunches((prev.launches || []).map((launch) => ({ ...launch })));
+    replaceChannels((prev.channels || []).map((channel) => ({ ...channel })));
     replaceRequirements(
       (prev.requirements || []).map((requirement) => ({ ...requirement }))
     );
+    setPreferences({
+      ...preferences,
+      ...(prev.preferences || {}),
+    });
     setHistoryStack((s) => s.slice(0, -1));
     toast("Изменение отменено");
   }
@@ -217,16 +228,58 @@ function AppInner() {
     toast("Удалено " + ids.length + " запусков");
   }
   function handleAddChannel(ch) {
+    pushSnapshot();
     addChannel(ch);
     toast("Канал добавлен");
   }
   function handleUpdateChannel(ch) {
+    pushSnapshot();
     updateChannel(ch);
     toast("Канал сохранён");
   }
   function handleDeleteChannel(id) {
+    pushSnapshot();
     deleteChannel(id);
     toast("Канал удалён");
+  }
+  function handleSoftResetChannels() {
+    const confirmed = window.confirm(
+      "Очистить весь справочник каналов мягко? Запуски и требования сохранятся, но привязки к каналам будут сняты, а старые названия сохранятся как подсказки."
+    );
+
+    if (!confirmed) return;
+
+    const channelNameById = new Map(
+      channels.map((channel) => [channel.id, channel.name || channel.title || ""])
+    );
+
+    pushSnapshot();
+    replaceLaunches(
+      launches.map((launch) => ({
+        ...launch,
+        channelNameSnapshot:
+          launch.channelId ? channelNameById.get(launch.channelId) || "" : "",
+        channelId: "",
+      }))
+    );
+    replaceRequirements(
+      requirements.map((requirement) => ({
+        ...requirement,
+        channelLabelSnapshots: Array.isArray(requirement.channelIds)
+          ? requirement.channelIds
+              .map((channelId) => channelNameById.get(channelId) || "")
+              .filter(Boolean)
+          : [],
+        channelIds: [],
+      }))
+    );
+    replaceChannels([]);
+    setPreferences({
+      ...preferences,
+      disableCatalogAutoSeed: true,
+    });
+    setCatalogSeeded(true);
+    toast("Справочник каналов очищен мягко");
   }
   function handleAddRequirement(r) {
     pushSnapshot();
@@ -609,6 +662,7 @@ function AppInner() {
               onAddChannel={handleAddChannel}
               onUpdateChannel={handleUpdateChannel}
               onDeleteChannel={handleDeleteChannel}
+              onSoftResetChannels={handleSoftResetChannels}
             />
           )}
           {activeTab === "calendar" && (

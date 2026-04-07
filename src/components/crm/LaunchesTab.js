@@ -242,7 +242,10 @@ function rowsFromWorksheet(sheet, XLSX) {
 function buildExportRows(launches, channels) {
   return launches.map((l) => ({
     Игра: l.game || "",
-    Канал: getChannelName(l.channelId, channels),
+    Канал:
+      getChannelName(l.channelId, channels) === "—"
+        ? l.channelNameSnapshot || ""
+        : getChannelName(l.channelId, channels),
     "Тип кампании": l.campaignType || "",
     Старт: l.startDate || "",
     Длительность: l.duration || "",
@@ -479,8 +482,10 @@ function renderGamePill(game) {
   );
 }
 
-function renderChannelPill(channelId, channels) {
-  const label = getChannelName(channelId, channels);
+function renderChannelPill(channelId, channels, fallbackLabel = "") {
+  const resolvedLabel = getChannelName(channelId, channels);
+  const label =
+    resolvedLabel === "—" ? fallbackLabel || resolvedLabel : resolvedLabel;
   const style = CHANNEL_PILL_STYLES[getChannelColorIndex(channelId)];
   return renderEntityPill(label, style);
 }
@@ -2054,7 +2059,11 @@ export default function LaunchesTab({
                           {renderEditableCell(
                             launch,
                             "channelId",
-                            renderChannelPill(launch.channelId, channels)
+                            renderChannelPill(
+                              launch.channelId,
+                              channels,
+                              launch.channelNameSnapshot
+                            )
                           )}
                           {renderEditableCell(
                             launch,

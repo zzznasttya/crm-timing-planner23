@@ -126,6 +126,7 @@ export default function ChannelsTab({
   onAddChannel,
   onUpdateChannel,
   onDeleteChannel,
+  onSoftResetChannels,
 }) {
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -257,6 +258,11 @@ export default function ChannelsTab({
         </div>
 
         <div className="toolbar-right">
+          {typeof onSoftResetChannels === "function" && (
+            <button className="btn" onClick={onSoftResetChannels}>
+              Мягкий сброс каналов
+            </button>
+          )}
           <button className="btn btn-primary" onClick={handleOpenCreate}>
             Добавить канал
           </button>

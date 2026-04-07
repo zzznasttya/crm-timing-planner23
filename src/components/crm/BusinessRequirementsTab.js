@@ -32,15 +32,23 @@ function priorityBadgeClass(priority) {
   return "badge badge-blue";
 }
 
-function getChannelNames(channelIds, channels) {
-  if (!Array.isArray(channelIds) || !channelIds.length) return "—";
+function getChannelNames(channelIds, channels, fallbackLabels = []) {
+  const resolvedLabels = Array.isArray(channelIds)
+    ? channelIds
+        .map((channelId) => {
+          const channel = channels.find((item) => item.id === channelId);
+          return getChannelDisplayName(channel) || "";
+        })
+        .filter(Boolean)
+    : [];
 
-  return channelIds
-    .map((channelId) => {
-      const channel = channels.find((item) => item.id === channelId);
-      return getChannelDisplayName(channel) || channelId;
-    })
-    .join(", ");
+  if (resolvedLabels.length) return resolvedLabels.join(", ");
+
+  if (Array.isArray(fallbackLabels) && fallbackLabels.length) {
+    return fallbackLabels.join(", ");
+  }
+
+  return "—";
 }
 
 function getFixedDateLabel(item) {
@@ -60,9 +68,9 @@ function buildExportRows(requirements, channels) {
     "Неделя до": item.weekEnd || "",
     Игра: item.game || "",
     Каналы:
-      getChannelNames(item.channelIds, channels) === "—"
+      getChannelNames(item.channelIds, channels, item.channelLabelSnapshots) === "—"
         ? ""
-        : getChannelNames(item.channelIds, channels),
+        : getChannelNames(item.channelIds, channels, item.channelLabelSnapshots),
     База: item.audience || "",
     Приоритет: normalizePriority(item.priority),
     "Жесткая привязка к датам": item.hasFixedDates === "yes" ? "Да" : "Нет",
@@ -799,7 +807,8 @@ export default function BusinessRequirementsTab({
     return filteredByPeriod.filter((item) => {
       const channelText = getChannelNames(
         item.channelIds,
-        channels
+        channels,
+        item.channelLabelSnapshots
       ).toLowerCase();
       const weekText = `${item.weekStart} - ${item.weekEnd}`.toLowerCase();
       const fixedDateText = getFixedDateLabel(item).toLowerCase();
@@ -1145,7 +1154,13 @@ export default function BusinessRequirementsTab({
                         {formatDisplayDate(item.weekEnd)}
                       </td>
                       <td>{item.game}</td>
-                      <td>{getChannelNames(item.channelIds, channels)}</td>
+                      <td>
+                        {getChannelNames(
+                          item.channelIds,
+                          channels,
+                          item.channelLabelSnapshots
+                        )}
+                      </td>
                       <td>{item.audience || "—"}</td>
                       <td>
                         <span className={priorityBadgeClass(item.priority)}>
