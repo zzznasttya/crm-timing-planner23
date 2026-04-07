@@ -66,11 +66,13 @@ function getSearchTexts(channel) {
 }
 
 export function buildCatalogChannel(entry) {
+  const index = EFFECTIVE_CHANNEL_CATALOG.findIndex((item) => item.key === entry.key);
   return {
     id: `catalog-channel-${entry.key}`,
     title: entry.title,
     subtitle: entry.subtitle,
     name: [entry.title, entry.subtitle].filter(Boolean).join(" / "),
+    effectivenessRank: index >= 0 ? index + 1 : null,
     duration: entry.duration || 5,
     iosMinVersion: "All",
     iosMaxVersion: "All",

@@ -11,12 +11,8 @@ import {
   normalizeAudience,
   PLANNABLE_REQUIREMENT_STATUSES,
 } from "./requirements-domain";
-import {
-  findCatalogEntryForChannel,
-  getCatalogChannelEffectiveness,
-} from "./channel-catalog";
+import { findCatalogEntryForChannel } from "./channel-catalog";
 import { getGamePlanningProfile } from "./game-catalog";
-import { getChannelPerformanceSnapshot } from "./performance-domain";
 import {
   compileAssistantRules,
   evaluateAssistantHardRules,
@@ -383,38 +379,49 @@ function isLaunchedStatus(value) {
   return normalizeAssistantText(value) === "запущено";
 }
 
-function scoreChannelEffectiveness(channel, requirement, performanceReports = []) {
-  const factualSnapshot = getChannelPerformanceSnapshot({
-    channel,
-    requirement,
-    performanceReports,
-  });
-  if (factualSnapshot) {
-    return {
-      score: factualSnapshot.score,
-      description: factualSnapshot.description,
-      tone: factualSnapshot.tone,
-    };
-  }
+function getManualChannelEffectiveness(channel, channels = []) {
+  const rank = Number(channel?.effectivenessRank);
+  if (!Number.isFinite(rank) || rank <= 0) return null;
 
-  const catalogEffectiveness = getCatalogChannelEffectiveness(channel);
-  if (catalogEffectiveness) {
+  const rankedChannels = channels.filter((item) => {
+    const currentRank = Number(item?.effectivenessRank);
+    return Number.isFinite(currentRank) && currentRank > 0;
+  });
+  const rankedCount = Math.max(rankedChannels.length, 1);
+  const score = Math.max(1, rankedCount - rank + 1);
+
+  return {
+    rank,
+    score: score * 2,
+    description: `Канал вручную ранжирован по эффективности и стоит на ${rank}-м месте из ${rankedCount}.`,
+    tone:
+      rank <= Math.max(1, Math.ceil(rankedCount / 3))
+        ? "positive"
+        : rank <= Math.max(2, Math.ceil((rankedCount * 2) / 3))
+        ? "neutral"
+        : "negative",
+  };
+}
+
+function scoreChannelEffectiveness(
+  channel,
+  requirement,
+  performanceReports = [],
+  channels = []
+) {
+  const manualEffectiveness = getManualChannelEffectiveness(channel, channels);
+  if (manualEffectiveness) {
     return {
-      score: catalogEffectiveness.score * 2,
-      description: catalogEffectiveness.description,
-      tone:
-        catalogEffectiveness.rank <= 5
-          ? "positive"
-          : catalogEffectiveness.rank <= 12
-          ? "neutral"
-          : "negative",
+      score: manualEffectiveness.score,
+      description: manualEffectiveness.description,
+      tone: manualEffectiveness.tone,
     };
   }
 
   return {
-    score: 6,
+    score: 0,
     description:
-      "По каналу пока нет фактической отчётности, используется нейтральная оценка.",
+      "Для канала не задан ручной ранг эффективности, поэтому он не получает преимущества при выборе.",
     tone: "neutral",
   };
 }
@@ -499,6 +506,7 @@ function scoreCandidate({
   assistantDirectives,
   specialScheduleRule,
   performanceReports,
+  channels,
 }) {
   const endDate = calculateEndDate(candidate.startDate, candidate.duration);
   if (!endDate) return null;
@@ -606,7 +614,8 @@ function scoreCandidate({
   const effectiveness = scoreChannelEffectiveness(
     channel,
     requirement,
-    performanceReports
+    performanceReports,
+    channels
   );
   const effectivenessWeight = getEffectivenessPriorityWeight(priorityTier);
   const weightedEffectivenessScore =
@@ -681,7 +690,7 @@ function scoreCandidate({
       spacingScore >= 10 ? "positive" : spacingScore >= 5 ? "neutral" : "negative"
     ),
     buildBreakdownItem(
-      "Конверсионность канала",
+      "Эффективность канала",
       weightedEffectivenessScore,
       priorityTier === "high"
         ? `Для высокого приоритета планировщик сильнее тянется к более эффективным каналам. ${effectiveness.description}`
@@ -789,6 +798,7 @@ function pickBestSlot({
   assistantDirectives,
   specialScheduleRule,
   performanceReports,
+  channels,
 }) {
   const dates = dateRange(windowStart, windowEnd);
   let best = null;
@@ -818,6 +828,7 @@ function pickBestSlot({
       assistantDirectives,
       specialScheduleRule,
       performanceReports,
+      channels,
     });
 
     if (!scored) continue;
@@ -1045,6 +1056,7 @@ function optimizeProposedLaunches({
         assistantDirectives,
         specialScheduleRule,
         performanceReports,
+        channels,
       });
 
       if (!bestSlot) return;
@@ -1064,6 +1076,14 @@ function optimizeProposedLaunches({
       candidateLaunch.conflictStatus = issues.length ? "conflict" : "ok";
 
       if (issues.length) return;
+
+      const candidateIdentityKey = buildLaunchIdentityKey(candidateLaunch, channels);
+      const occupiedLaunchKeys = new Set(
+        poolWithoutCurrent.map((item) => buildLaunchIdentityKey(item, channels))
+      );
+      if (occupiedLaunchKeys.has(candidateIdentityKey)) {
+        return;
+      }
 
       const improvement = Number(bestSlot.score || 0) - currentScore;
       const changesChannel = candidateLaunch.channelId !== launch.channelId;
@@ -1223,7 +1243,7 @@ export function buildSchedule({
       const windowCoverageStart = req.fixedStartDate || req.weekStart || windowStart;
       const windowCoverageEnd = req.fixedEndDate || req.weekEnd || windowEnd;
       const scoreA =
-        scoreChannelEffectiveness(a, req, performanceReports).score *
+        scoreChannelEffectiveness(a, req, performanceReports, channels).score *
           getEffectivenessPriorityWeight(priorityTier) *
           gameProfile.channelSelectionEffectivenessWeight +
         (coverageSet.has(a.id) ? 0 : gameProfile.channelSelectionCoverageBonus) -
@@ -1231,7 +1251,7 @@ export function buildSchedule({
           4 *
           gameProfile.channelSelectionLoadPenalty;
       const scoreB =
-        scoreChannelEffectiveness(b, req, performanceReports).score *
+        scoreChannelEffectiveness(b, req, performanceReports, channels).score *
           getEffectivenessPriorityWeight(priorityTier) *
           gameProfile.channelSelectionEffectivenessWeight +
         (coverageSet.has(b.id) ? 0 : gameProfile.channelSelectionCoverageBonus) -
@@ -1293,6 +1313,7 @@ export function buildSchedule({
         assistantDirectives,
         specialScheduleRule,
         performanceReports,
+        channels,
       });
 
       if (!bestSlot) {
@@ -1377,8 +1398,75 @@ export function buildSchedule({
     performanceReports,
   });
 
+  const finalProposed = dedupeLaunchesByIdentity(optimizedProposed, channels);
+  const skippedByRequirementId = new Map(
+    skipped
+      .filter((item) => item?.req?.id)
+      .map((item) => [item.req.id, item])
+  );
+  const proposedCountByRequirementId = new Map();
+
+  finalProposed.forEach((launch) => {
+    const requirementId = launch?._fromRequirementId;
+    if (!requirementId) return;
+    proposedCountByRequirementId.set(
+      requirementId,
+      (proposedCountByRequirementId.get(requirementId) || 0) + 1
+    );
+  });
+
+  const rebuiltSkipped = [];
+  sorted.forEach((req) => {
+    if (!PLANNABLE_REQUIREMENT_STATUSES.includes(req.status || "новое")) {
+      return;
+    }
+
+    const { start, end } = getRequirementWindow(req);
+    if (!start || !end) {
+      rebuiltSkipped.push(
+        skippedByRequirementId.get(req.id) || { req, reason: "Не задано окно дат" }
+      );
+      return;
+    }
+
+    const targetChannels = getRequirementTargetChannels(req, channels);
+    if (!targetChannels.length) {
+      rebuiltSkipped.push(
+        skippedByRequirementId.get(req.id) || {
+          req,
+          reason: "Нет каналов для этого требования",
+        }
+      );
+      return;
+    }
+
+    const plannedCount = proposedCountByRequirementId.get(req.id) || 0;
+    const previousSkip = skippedByRequirementId.get(req.id);
+
+    if (plannedCount === 0) {
+      rebuiltSkipped.push(
+        previousSkip || {
+          req,
+          reason: "Нет подходящего канала или слота",
+        }
+      );
+      return;
+    }
+
+    if (plannedCount < targetChannels.length) {
+      rebuiltSkipped.push({
+        ...(previousSkip || {}),
+        req,
+        reason: "Не все каналы удалось поставить без пересечений",
+        details: previousSkip?.details || [],
+      });
+    }
+  });
+
   proposed.length = 0;
-  proposed.push(...dedupeLaunchesByIdentity(optimizedProposed, channels));
+  proposed.push(...finalProposed);
+  skipped.length = 0;
+  skipped.push(...rebuiltSkipped);
 
   proposed.sort((a, b) => {
     const scoreDiff = Number(b._score || 0) - Number(a._score || 0);

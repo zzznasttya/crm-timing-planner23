@@ -10,12 +10,20 @@ function createEmptyChannel() {
     id: `channel-${Date.now()}`,
     title: "",
     subtitle: "",
+    effectivenessRank: "",
     duration: 5,
     iosMinVersion: "All",
     iosMaxVersion: "All",
     androidMinVersion: "All",
     androidMaxVersion: "All",
   };
+}
+
+function normalizeEffectivenessRank(value) {
+  if (value === "" || value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed);
 }
 
 function normalizeChannelDraft(channel) {
@@ -27,6 +35,7 @@ function normalizeChannelDraft(channel) {
     title,
     subtitle,
     name: getChannelDisplayName({ title, subtitle }) || channel.name || "",
+    effectivenessRank: normalizeEffectivenessRank(channel.effectivenessRank),
     duration: Number(channel.duration) || 5,
     iosMinVersion: channel.iosMinVersion || "All",
     iosMaxVersion: channel.iosMaxVersion || "All",
@@ -81,6 +90,17 @@ function ChannelForm({ value, onChange }) {
           value={value.subtitle || ""}
           onChange={(e) => update("subtitle", e.target.value)}
           placeholder="Например: победителям"
+        />
+      </div>
+
+      <div>
+        <label>Эффективность</label>
+        <input
+          type="number"
+          min="1"
+          value={value.effectivenessRank ?? ""}
+          onChange={(e) => update("effectivenessRank", e.target.value)}
+          placeholder="1 = самый эффективный"
         />
       </div>
 
@@ -151,9 +171,9 @@ export default function ChannelsTab({
 
   const filteredChannels = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return channels;
-
-    return channels.filter((channel) => {
+    const source = !q
+      ? channels
+      : channels.filter((channel) => {
       const text = [
         getChannelDisplayName(channel),
         channel.title,
@@ -168,6 +188,19 @@ export default function ChannelsTab({
         .toLowerCase();
 
       return text.includes(q);
+    });
+
+    return [...source].sort((a, b) => {
+      const rankA = normalizeEffectivenessRank(a.effectivenessRank);
+      const rankB = normalizeEffectivenessRank(b.effectivenessRank);
+
+      if (rankA != null && rankB != null && rankA !== rankB) {
+        return rankA - rankB;
+      }
+      if (rankA != null) return -1;
+      if (rankB != null) return 1;
+
+      return getChannelDisplayName(a).localeCompare(getChannelDisplayName(b), "ru");
     });
   }, [channels, search]);
 
@@ -470,6 +503,33 @@ export default function ChannelsTab({
                       {getChannelSubtitle(channel)}
                     </div>
                   )}
+
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      background:
+                        normalizeEffectivenessRank(channel.effectivenessRank) != null
+                          ? "rgba(239, 68, 68, 0.12)"
+                          : "#f3f4f6",
+                      color:
+                        normalizeEffectivenessRank(channel.effectivenessRank) != null
+                          ? "#b91c1c"
+                          : "#6b7280",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {normalizeEffectivenessRank(channel.effectivenessRank) != null
+                      ? `Эффективность #${normalizeEffectivenessRank(
+                          channel.effectivenessRank
+                        )}`
+                      : "Эффективность не задана"}
+                  </div>
 
                 </div>
 
