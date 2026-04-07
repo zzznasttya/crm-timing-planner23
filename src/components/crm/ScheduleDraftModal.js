@@ -96,8 +96,7 @@ function compactReasonList(planning, launch) {
                 display: "inline-block",
               }}
             >
-              {item.label}: {item.value > 0 ? "+" : ""}
-              {item.value}
+              {item.label}
             </span>
             <span className="small">{item.description}</span>
           </div>
@@ -109,9 +108,7 @@ function compactReasonList(planning, launch) {
       {alternatives.length > 0 && (
         <div className="small muted">
           Альтернативы:{" "}
-          {alternatives
-            .map((item) => `${formatDisplayDate(item.startDate)} (${item.score})`)
-            .join(", ")}
+          {alternatives.map((item) => formatDisplayDate(item.startDate)).join(", ")}
         </div>
       )}
     </div>
@@ -363,7 +360,7 @@ export default function ScheduleDraftModal({
                           <div>{launch.audience || "—"}</div>
                         </div>
                         <div>
-                          <div className="muted small">Период</div>
+                          <div className="muted small">Период запуска</div>
                           <div>
                             {formatDisplayDate(launch.startDate)} —{" "}
                             {formatDisplayDate(launch.endDate)}
@@ -376,7 +373,7 @@ export default function ScheduleDraftModal({
                           </div>
                         </div>
                         <div>
-                          <div className="muted small">Окно планирования</div>
+                          <div className="muted small">Допустимое окно</div>
                           <div>
                             {formatDisplayDate(
                               planning.windowStart || launch.earliestStartDate
@@ -387,12 +384,7 @@ export default function ScheduleDraftModal({
                             )}
                           </div>
                         </div>
-                        <div>
-                          <div className="muted small">Score</div>
-                          <div style={{ fontWeight: 800 }}>
-                            {planning.score ?? launch._score ?? "—"}
-                          </div>
-                        </div>
+                        <div />
                       </div>
 
                       <div

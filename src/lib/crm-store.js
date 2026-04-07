@@ -141,6 +141,9 @@ export function useCRMStore() {
 
   const [launches, setLaunches] = useState(persisted.launches || []);
   const [channels, setChannels] = useState(persisted.channels || []);
+  const [performanceReports, setPerformanceReports] = useState(
+    Array.isArray(persisted.performanceReports) ? persisted.performanceReports : []
+  );
   const [requirements, setRequirements] = useState(
     persisted.requirements || []
   );
@@ -157,12 +160,13 @@ export function useCRMStore() {
     save({
       launches,
       channels,
+      performanceReports,
       requirements,
       messages,
       rules,
       preferences,
     });
-  }, [launches, channels, requirements, messages, rules, preferences]);
+  }, [launches, channels, performanceReports, requirements, messages, rules, preferences]);
 
   // ───── Launches ─────
   function addLaunch(launch) {
@@ -215,6 +219,7 @@ export function useCRMStore() {
   return {
     launches,
     channels,
+    performanceReports,
     requirements,
     messages,
     rules,
@@ -228,6 +233,8 @@ export function useCRMStore() {
     addChannel,
     updateChannel,
     deleteChannel,
+
+    setPerformanceReports,
 
     addRequirement,
     updateRequirement,

@@ -6,6 +6,7 @@ import CalendarTab from "./components/crm/CalendarTab";
 import ChannelLoadTab from "./components/crm/ChannelLoadTab";
 import BusinessRequirementsTab from "./components/crm/BusinessRequirementsTab";
 import BKPTab from "./components/crm/BKPTab";
+import FactTab from "./components/crm/FactTab";
 import AssistantPanel from "./components/crm/AssistantPanel";
 import ScheduleDraftModal from "./components/crm/ScheduleDraftModal";
 import { ToastProvider, useToast } from "./components/crm/Toast";
@@ -45,10 +46,12 @@ function AppInner() {
   const {
     launches,
     channels,
+    performanceReports,
     requirements,
     messages,
     rules,
     preferences,
+    setPerformanceReports,
     addLaunch,
     updateLaunch,
     deleteLaunch,
@@ -233,6 +236,26 @@ function AppInner() {
     toast("Данные сброшены");
   }
 
+  function handleImportPerformanceReports(importedReports) {
+    const nextReports = Array.isArray(importedReports) ? importedReports : [];
+    if (!nextReports.length) return;
+
+    setPerformanceReports((prev) => {
+      const merged = new Map();
+      [...prev, ...nextReports].forEach((row) => {
+        const key =
+          row.importKey ||
+          [row.sourceFile, row.reportDate, row.layoutCode, row.channelId || row.channelName].join(
+            "|"
+          );
+        merged.set(key, row);
+      });
+      return Array.from(merged.values());
+    });
+
+    toast("Импортировано " + nextReports.length + " строк фактической отчётности");
+  }
+
   // ── Schedule generation ──
   function handleGenerateSchedule() {
     if (requirements.length === 0) {
@@ -400,6 +423,7 @@ function AppInner() {
               ["channels", "Каналы"],
               ["calendar", "Календарь"],
               ["channel-load", "Загрузка каналов"],
+              ["fact", "Факт"],
               ["business-requirements", "Бизнес-требования"],
               ["bkp", "БКП"],
             ].map(([id, label]) => (
@@ -444,6 +468,14 @@ function AppInner() {
           )}
           {activeTab === "channel-load" && (
             <ChannelLoadTab channels={channels} launches={launches} />
+          )}
+          {activeTab === "fact" && (
+            <FactTab
+              launches={launches}
+              channels={channels}
+              performanceReports={performanceReports}
+              onImportReports={handleImportPerformanceReports}
+            />
           )}
           {activeTab === "business-requirements" && (
             <BusinessRequirementsTab

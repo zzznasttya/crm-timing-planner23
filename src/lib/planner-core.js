@@ -233,6 +233,12 @@ function scoreChannelEffectiveness(channelId, launches) {
   };
 }
 
+function getEffectivenessPriorityWeight(priorityTier) {
+  if (priorityTier === "high") return 1.75;
+  if (priorityTier === "medium") return 1.2;
+  return 0.8;
+}
+
 function deriveAssistantPlanningDirectives(assistantContext = {}) {
   const messages = Array.isArray(assistantContext.messages)
     ? assistantContext.messages
@@ -402,6 +408,8 @@ function scoreCandidate({
 
   const assistantScore = evaluateAssistantScoreAdjustments(candidate, compiled);
   const effectiveness = scoreChannelEffectiveness(channel.id, existing);
+  const effectivenessWeight = getEffectivenessPriorityWeight(priorityTier);
+  const weightedEffectivenessScore = effectiveness.score * effectivenessWeight;
 
   const breakdown = [
     buildBreakdownItem(
@@ -443,9 +451,11 @@ function scoreCandidate({
       spacingScore >= 10 ? "positive" : spacingScore >= 5 ? "neutral" : "negative"
     ),
     buildBreakdownItem(
-      "Эффективность канала",
-      effectiveness.score,
-      effectiveness.description,
+      "Конверсионность канала",
+      weightedEffectivenessScore,
+      priorityTier === "high"
+        ? `Для высокого приоритета планировщик сильнее тянется к более эффективным каналам. ${effectiveness.description}`
+        : effectiveness.description,
       effectiveness.tone
     ),
   ];
@@ -681,6 +691,17 @@ export function buildSchedule({
       });
       continue;
     }
+
+    const priorityTier = getPriorityTier(req.priority);
+    targetChannels = [...targetChannels].sort((a, b) => {
+      const scoreA =
+        scoreChannelEffectiveness(a.id, pool).score *
+        getEffectivenessPriorityWeight(priorityTier);
+      const scoreB =
+        scoreChannelEffectiveness(b.id, pool).score *
+        getEffectivenessPriorityWeight(priorityTier);
+      return scoreB - scoreA;
+    });
 
     const plannedLaunches = [];
     const channelAttempts = [];
