@@ -17,6 +17,7 @@ import {
   evaluateAssistantScoreAdjustments,
   getAssistantDateWindowOverride,
 } from "./assistant/rule-engine";
+import { getChannelIdentityKey } from "./channel-catalog";
 
 const PLANNED_KB_AUDIENCE = "клиенты с план. начислением кб";
 const BALANCE_KB_AUDIENCE = "клиенты с остатками кб";
@@ -749,11 +750,18 @@ function getRequirementWindow(requirement) {
 }
 
 function getRequirementTargetChannels(requirement, channels) {
-  if (Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0) {
-    return channels.filter((channel) => requirement.channelIds.includes(channel.id));
-  }
+  const source =
+    Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0
+      ? channels.filter((channel) => requirement.channelIds.includes(channel.id))
+      : [...channels];
 
-  return [...channels];
+  const seen = new Set();
+  return source.filter((channel) => {
+    const key = getChannelIdentityKey(channel);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildProposedLaunch({

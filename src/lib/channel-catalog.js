@@ -35,6 +35,20 @@ function normalizeLooseText(value) {
     .trim();
 }
 
+export function getChannelIdentityKey(channel) {
+  const matchedEntry = findCatalogEntryForChannel(channel);
+  if (matchedEntry?.key) {
+    return `catalog:${matchedEntry.key}`;
+  }
+
+  const title = normalizeLooseText(getChannelTitle(channel));
+  const subtitle = normalizeLooseText(getChannelSubtitle(channel));
+  const displayName = normalizeLooseText(getChannelDisplayName(channel));
+  const fallback = [title, subtitle].filter(Boolean).join("|") || displayName;
+
+  return fallback ? `custom:${fallback}` : `id:${channel?.id || ""}`;
+}
+
 function getSearchTexts(channel) {
   const title = getChannelTitle(channel);
   const subtitle = getChannelSubtitle(channel);
@@ -99,8 +113,7 @@ export function getCatalogChannelEffectiveness(channel) {
 
 export function getMissingCatalogChannels(channels = []) {
   return EFFECTIVE_CHANNEL_CATALOG.filter((entry) => {
-    const draftChannel = buildCatalogChannel(entry);
-    return !findCatalogEntryForChannel(draftChannel) || !channels.some((channel) => {
+    return !channels.some((channel) => {
       const match = findCatalogEntryForChannel(channel);
       return match?.key === entry.key;
     });

@@ -198,6 +198,10 @@ export function useCRMStore() {
     setChannels((prev) => prev.filter((c) => c.id !== id));
   }
 
+  function replaceChannels(nextChannels) {
+    setChannels(Array.isArray(nextChannels) ? nextChannels : []);
+  }
+
   // ───── Requirements ─────
   function addRequirement(req) {
     setRequirements((prev) => [...prev, req]);
@@ -232,6 +236,7 @@ export function useCRMStore() {
     addChannel,
     updateChannel,
     deleteChannel,
+    replaceChannels,
 
     setPerformanceReports,
 
