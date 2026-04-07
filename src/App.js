@@ -662,7 +662,6 @@ function AppInner() {
               onAddChannel={handleAddChannel}
               onUpdateChannel={handleUpdateChannel}
               onDeleteChannel={handleDeleteChannel}
-              onSoftResetChannels={handleSoftResetChannels}
             />
           )}
           {activeTab === "calendar" && (
