@@ -175,14 +175,17 @@ function AppInner() {
     toast("Канал удалён");
   }
   function handleAddRequirement(r) {
+    pushSnapshot();
     addRequirement(r);
     toast("Требование добавлено");
   }
   function handleUpdateRequirement(r) {
+    pushSnapshot();
     updateRequirement(r);
     toast("Требование сохранено");
   }
   function handleDeleteRequirement(id) {
+    pushSnapshot();
     deleteRequirement(id);
     toast("Требование удалено");
   }
@@ -191,6 +194,7 @@ function AppInner() {
     const updatesById = new Map(
       nextRequirements.map((requirement) => [requirement.id, requirement])
     );
+    pushSnapshot();
     replaceRequirements(
       requirements.map((requirement) => updatesById.get(requirement.id) || requirement)
     );
@@ -199,6 +203,7 @@ function AppInner() {
   function handleBulkDeleteRequirements(ids) {
     if (!Array.isArray(ids) || !ids.length) return;
     const idsSet = new Set(ids);
+    pushSnapshot();
     replaceRequirements(
       requirements.filter((requirement) => !idsSet.has(requirement.id))
     );

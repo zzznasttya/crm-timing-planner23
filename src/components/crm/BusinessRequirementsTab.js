@@ -32,11 +32,6 @@ function priorityBadgeClass(priority) {
   return "badge badge-blue";
 }
 
-function statusBadgeClass(status) {
-  if (status === "учтено") return "badge badge-green";
-  return "badge";
-}
-
 function getChannelNames(channelIds, channels) {
   if (!Array.isArray(channelIds) || !channelIds.length) return "—";
 
@@ -674,6 +669,19 @@ export default function BusinessRequirementsTab({
     if (toast) toast("Требование удалено");
   }
 
+  function handleQuickStatusChange(item, nextStatus) {
+    if (!nextStatus || nextStatus === item.status) return;
+
+    const normalized = normalizeRequirement({
+      ...item,
+      status: nextStatus,
+    });
+
+    if (typeof onUpdateRequirement === "function") {
+      onUpdateRequirement(normalized);
+    }
+  }
+
   async function handleImportFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1145,10 +1153,23 @@ export default function BusinessRequirementsTab({
                         </span>
                       </td>
                       <td>{getFixedDateLabel(item)}</td>
-                      <td>
-                        <span className={statusBadgeClass(item.status)}>
-                          {item.status}
-                        </span>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={item.status || "новое"}
+                          onChange={(e) =>
+                            handleQuickStatusChange(item, e.target.value)
+                          }
+                          aria-label={`Статус требования ${item.game}`}
+                          style={{
+                            minWidth: "110px",
+                          }}
+                        >
+                          {STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="muted small">{item.comment || "—"}</td>
                       <td>
