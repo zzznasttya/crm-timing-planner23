@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { normalizeAudience } from "./requirements-domain";
+export { GAMES } from "./game-catalog";
 
 const STORAGE_KEY = "crm-store-v1";
 const DEFAULT_PREFERENCES = {
   autoActivateHighConfidenceRules: false,
   confidenceThreshold: 0.8,
 };
-
-export const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
 
 function isWinnersAudience(value) {
   return normalizeAudience(value || "") === "победители";

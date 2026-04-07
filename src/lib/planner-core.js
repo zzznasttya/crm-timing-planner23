@@ -4,13 +4,22 @@ import {
   calculateEndDate,
   formatDisplayDate,
 } from "./crm-store";
-import { normalizeAudience } from "./requirements-domain";
+import {
+  normalizeAudience,
+  PLANNABLE_REQUIREMENT_STATUSES,
+} from "./requirements-domain";
+import { getCatalogChannelEffectiveness } from "./channel-catalog";
+import { getGamePlanningProfile } from "./game-catalog";
+import { getChannelPerformanceSnapshot } from "./performance-domain";
 import {
   compileAssistantRules,
   evaluateAssistantHardRules,
   evaluateAssistantScoreAdjustments,
   getAssistantDateWindowOverride,
 } from "./assistant/rule-engine";
+
+const PLANNED_KB_AUDIENCE = "клиенты с план. начислением кб";
+const BALANCE_KB_AUDIENCE = "клиенты с остатками кб";
 
 function recalculateAllConflicts(launches, channels) {
   return launches.map((launch) => {
@@ -59,6 +68,20 @@ function countChannelActiveOnDay(day, launches, channelId) {
   ).length;
 }
 
+function countChannelLaunchesInWindow(launches, channelId, windowStart, windowEnd) {
+  if (!channelId || !windowStart || !windowEnd) return 0;
+
+  return launches.filter(
+    (launch) =>
+      launch.planningStatus !== "приостановлено" &&
+      launch.channelId === channelId &&
+      launch.startDate &&
+      launch.endDate &&
+      launch.startDate <= windowEnd &&
+      launch.endDate >= windowStart
+  ).length;
+}
+
 function buildIntervalDays(startDate, endDate) {
   if (!startDate || !endDate) return [];
   return dateRange(startDate, endDate);
@@ -85,8 +108,100 @@ function normalizeLaunchPriority(priority) {
     : "3";
 }
 
+function normalizeLooseText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, "е");
+}
+
 function getChannelDuration(channel) {
   return Math.max(1, Number(channel?.duration) || 5);
+}
+
+function isPlannedKBAudience(value) {
+  return normalizeLooseText(normalizeAudience(value || "")) === PLANNED_KB_AUDIENCE;
+}
+
+function isBalanceKBAudience(value) {
+  return normalizeLooseText(normalizeAudience(value || "")) === BALANCE_KB_AUDIENCE;
+}
+
+function isPushChannel(channel) {
+  const token = normalizeLooseText(
+    `${channel?.title || ""} ${channel?.subtitle || ""} ${channel?.name || ""}`
+  );
+  return token.includes("пуш") || token.includes("push");
+}
+
+function isPushLaunch(launch, channels = []) {
+  const matchedChannel = channels.find((channel) => channel.id === launch?.channelId);
+  return isPushChannel(matchedChannel);
+}
+
+function buildDateInSameMonth(dateString, dayOfMonth) {
+  if (!dateString) return "";
+  const parsed = parseISO(dateString);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const date = new Date(parsed);
+  const month = date.getMonth();
+  date.setMonth(month + 1, 0);
+  const lastDayOfMonth = date.getDate();
+  date.setMonth(month, Math.min(dayOfMonth, lastDayOfMonth));
+  return format(date, "yyyy-MM-dd");
+}
+
+function getMonthKey(dateString) {
+  if (!dateString) return "";
+  return String(dateString).slice(0, 7);
+}
+
+function buildKBAudienceScheduleRule(
+  requirement,
+  channel,
+  pool,
+  channels,
+  baseWindowStart
+) {
+  const audience = requirement?.audience;
+  const isPlanned = isPlannedKBAudience(audience);
+  const isBalance = isBalanceKBAudience(audience);
+  if (!isPlanned && !isBalance) return null;
+
+  const referenceDate =
+    baseWindowStart || requirement?.weekStart || requirement?.fixedStartDate;
+  const hardWindowStart = buildDateInSameMonth(referenceDate, isPlanned ? 10 : 20);
+  const preferredWindowEnd = buildDateInSameMonth(referenceDate, isPlanned ? 15 : 30);
+  const hardWindowEnd = buildDateInSameMonth(referenceDate, isPlanned ? 20 : 30);
+
+  if (!hardWindowStart || !hardWindowEnd) return null;
+
+  const monthKey = getMonthKey(hardWindowStart);
+  const preferredPushDays = isPlanned ? [10, 13, 15] : [20, 23, 27];
+
+  const existingPushCount = isPushChannel(channel)
+    ? pool.filter((launch) => {
+        const sameAudience = isPlanned
+          ? isPlannedKBAudience(launch?.audience)
+          : isBalanceKBAudience(launch?.audience);
+        if (!sameAudience) return false;
+        if (getMonthKey(launch?.startDate) !== monthKey) return false;
+        return isPushLaunch(launch, channels);
+      }).length
+    : 0;
+
+  const preferredPushDate =
+    isPushChannel(channel) && existingPushCount < preferredPushDays.length
+      ? buildDateInSameMonth(referenceDate, preferredPushDays[existingPushCount])
+      : "";
+
+  return {
+    audienceType: isPlanned ? "planned_kb" : "balance_kb",
+    hardWindowStart,
+    hardWindowEnd,
+    preferredWindowEnd,
+    preferredExactDate: preferredPushDate,
+  };
 }
 
 function daysBetween(from, to) {
@@ -159,77 +274,39 @@ function isLaunchedStatus(value) {
   return normalizeAssistantText(value) === "запущено";
 }
 
-function getChannelHistoryStats(channelId, launches) {
-  const history = launches.filter(
-    (launch) =>
-      launch.channelId === channelId &&
-      launch.startDate &&
-      launch.planningStatus !== "приостановлено"
-  );
-  const launched = history.filter((launch) => isLaunchedStatus(launch.planningStatus));
-  const measured = launched.filter((launch) => Number(launch.sentBaseCount) > 0);
-
-  const recentCutoff = new Date();
-  recentCutoff.setDate(recentCutoff.getDate() - 90);
-
-  const recentLaunched = launched.filter((launch) => {
-    const date = parseISO(launch.startDate);
-    return !Number.isNaN(date.getTime()) && date >= recentCutoff;
+function scoreChannelEffectiveness(channel, requirement, performanceReports = []) {
+  const factualSnapshot = getChannelPerformanceSnapshot({
+    channel,
+    requirement,
+    performanceReports,
   });
-
-  const averageSentBase = measured.length
-    ? measured.reduce((sum, launch) => sum + Number(launch.sentBaseCount || 0), 0) /
-      measured.length
-    : 0;
-
-  return {
-    historyCount: history.length,
-    launchedCount: launched.length,
-    measuredCount: measured.length,
-    recentLaunchedCount: recentLaunched.length,
-    averageSentBase,
-  };
-}
-
-function scoreChannelEffectiveness(channelId, launches) {
-  const stats = getChannelHistoryStats(channelId, launches);
-
-  if (!stats.historyCount) {
+  if (factualSnapshot) {
     return {
-      score: 6,
-      description: "По каналу пока нет истории, используется нейтральная оценка.",
-      tone: "neutral",
+      score: factualSnapshot.score,
+      description: factualSnapshot.description,
+      tone: factualSnapshot.tone,
     };
   }
 
-  const completionRatio = stats.launchedCount / Math.max(1, stats.historyCount);
-  const completionScore = completionRatio * 6;
-  const recencyScore = Math.min(6, stats.recentLaunchedCount * 1.5);
-  const baseScore = stats.measuredCount
-    ? Math.min(10, Math.log10(stats.averageSentBase + 1) * 2.2)
-    : 4;
-  const total = Number((completionScore + recencyScore + baseScore).toFixed(1));
-
-  const descriptionParts = [
-    `История запусков: ${stats.launchedCount} из ${stats.historyCount}.`,
-  ];
-
-  if (stats.measuredCount > 0) {
-    descriptionParts.push(
-      `Средняя база коммуникаций: ${Math.round(stats.averageSentBase).toLocaleString("ru-RU")}.`
-    );
-  } else {
-    descriptionParts.push("База коммуникаций по завершённым запускам пока не указана.");
-  }
-
-  if (stats.recentLaunchedCount > 0) {
-    descriptionParts.push(`За последние 90 дней запущено: ${stats.recentLaunchedCount}.`);
+  const catalogEffectiveness = getCatalogChannelEffectiveness(channel);
+  if (catalogEffectiveness) {
+    return {
+      score: catalogEffectiveness.score * 2,
+      description: catalogEffectiveness.description,
+      tone:
+        catalogEffectiveness.rank <= 5
+          ? "positive"
+          : catalogEffectiveness.rank <= 12
+          ? "neutral"
+          : "negative",
+    };
   }
 
   return {
-    score: total,
-    description: descriptionParts.join(" "),
-    tone: total >= 12 ? "positive" : total >= 7 ? "neutral" : "negative",
+    score: 6,
+    description:
+      "По каналу пока нет фактической отчётности, используется нейтральная оценка.",
+    tone: "neutral",
   };
 }
 
@@ -311,6 +388,8 @@ function scoreCandidate({
   compiled,
   maxPerDay,
   assistantDirectives,
+  specialScheduleRule,
+  performanceReports,
 }) {
   const endDate = calculateEndDate(candidate.startDate, candidate.duration);
   if (!endDate) return null;
@@ -360,14 +439,19 @@ function scoreCandidate({
     : 0;
 
   const priorityTier = getPriorityTier(requirement.priority);
+  const gameProfile = getGamePlanningProfile(requirement.game);
   let placementPreferenceScore;
   if (assistantDirectives?.timingBias === "early") {
     placementPreferenceScore = (1 - normalizedPosition) * 16;
   } else if (assistantDirectives?.timingBias === "late") {
     placementPreferenceScore = normalizedPosition * 16;
+  } else if (gameProfile.defaultPositioning === "early") {
+    placementPreferenceScore = (1 - normalizedPosition) * 20;
   } else {
     placementPreferenceScore =
-      priorityTier === "high"
+      gameProfile.type === "anchor_action"
+        ? (1 - Math.abs(normalizedPosition - 0.45)) * 12
+        : priorityTier === "high"
         ? (1 - normalizedPosition) * 18
         : priorityTier === "medium"
         ? (1 - Math.abs(normalizedPosition - 0.35)) * 10
@@ -375,11 +459,11 @@ function scoreCandidate({
   }
 
   const pressurePenaltyMultiplier =
-    assistantDirectives?.densityMode === "aggressive"
+    (assistantDirectives?.densityMode === "aggressive"
       ? 2
       : assistantDirectives?.densityMode === "conservative"
       ? 5
-      : 4;
+      : 4) * gameProfile.pressurePenaltyMultiplier;
 
   const pressureScore = Math.max(
     0,
@@ -389,9 +473,9 @@ function scoreCandidate({
   const channelLoadScore = Math.max(
     0,
     14 -
-      channelStartPressure * 4 -
-      channelPeakPressure * 2 -
-      channelWindowLoadRatio * 8
+      channelStartPressure * 4 * gameProfile.channelLoadPenaltyMultiplier -
+      channelPeakPressure * 2 * gameProfile.channelLoadPenaltyMultiplier -
+      channelWindowLoadRatio * 8 * gameProfile.channelLoadPenaltyMultiplier
   );
 
   const sameGameGap = getNearestGapDays(candidate, existing);
@@ -404,12 +488,49 @@ function scoreCandidate({
   const spacingScore =
     sameGameGap == null
       ? 8
-      : Math.min(16, Math.max(0, sameGameGap - 2) * spacingMultiplier);
+      : Math.min(
+          16,
+          Math.max(0, sameGameGap - 2) * spacingMultiplier * gameProfile.spacingMultiplier
+        );
 
   const assistantScore = evaluateAssistantScoreAdjustments(candidate, compiled);
-  const effectiveness = scoreChannelEffectiveness(channel.id, existing);
+  const effectiveness = scoreChannelEffectiveness(
+    channel,
+    requirement,
+    performanceReports
+  );
   const effectivenessWeight = getEffectivenessPriorityWeight(priorityTier);
-  const weightedEffectivenessScore = effectiveness.score * effectivenessWeight;
+  const weightedEffectivenessScore =
+    effectiveness.score *
+    effectivenessWeight *
+    gameProfile.effectivenessMultiplier;
+  const specialDateScore = (() => {
+    if (!specialScheduleRule) return 0;
+
+    if (
+      specialScheduleRule.preferredExactDate &&
+      candidate.startDate === specialScheduleRule.preferredExactDate
+    ) {
+      return 28;
+    }
+
+    if (
+      specialScheduleRule.preferredWindowEnd &&
+      candidate.startDate >= specialScheduleRule.hardWindowStart &&
+      candidate.startDate <= specialScheduleRule.preferredWindowEnd
+    ) {
+      return 16;
+    }
+
+    if (
+      candidate.startDate >= specialScheduleRule.hardWindowStart &&
+      candidate.startDate <= specialScheduleRule.hardWindowEnd
+    ) {
+      return 4;
+    }
+
+    return -20;
+  })();
 
   const breakdown = [
     buildBreakdownItem(
@@ -458,7 +579,59 @@ function scoreCandidate({
         : effectiveness.description,
       effectiveness.tone
     ),
+    buildBreakdownItem(
+      "Логика игры",
+      gameProfile.type === "kb_utilization"
+        ? 10
+        : gameProfile.type === "anchor_action"
+        ? 8
+        : 5,
+      gameProfile.description,
+      "neutral"
+    ),
   ];
+
+  if (specialScheduleRule) {
+    const exactDate = specialScheduleRule.preferredExactDate;
+    const description = exactDate
+        ? specialScheduleRule.audienceType === "planned_kb"
+          ? `Для аудитории с план. начислением КБ пуши ставятся по последовательности ${formatDisplayDate(
+              buildDateInSameMonth(candidate.startDate, 10)
+            )}, ${formatDisplayDate(
+              buildDateInSameMonth(candidate.startDate, 13)
+            )}, ${formatDisplayDate(buildDateInSameMonth(candidate.startDate, 15))}.`
+          : `Для аудитории с остатками КБ пуши ставятся по последовательности ${formatDisplayDate(
+              buildDateInSameMonth(candidate.startDate, 20)
+            )}, ${formatDisplayDate(
+              buildDateInSameMonth(candidate.startDate, 23)
+            )}, ${formatDisplayDate(buildDateInSameMonth(candidate.startDate, 27))}.`
+      : specialScheduleRule.audienceType === "planned_kb"
+      ? `Для аудитории с план. начислением КБ используется окно ${formatDisplayDate(
+          specialScheduleRule.hardWindowStart
+        )} - ${formatDisplayDate(
+          specialScheduleRule.hardWindowEnd
+        )} с предпочтением старта до ${formatDisplayDate(
+          specialScheduleRule.preferredWindowEnd
+        )}.`
+      : `Для аудитории с остатками КБ используется окно ${formatDisplayDate(
+          specialScheduleRule.hardWindowStart
+        )} - ${formatDisplayDate(
+          specialScheduleRule.hardWindowEnd
+        )} с приоритетом запуска после ${formatDisplayDate(
+          specialScheduleRule.hardWindowStart
+        )}.`;
+
+    breakdown.push(
+      buildBreakdownItem(
+        "Правило КБ",
+        specialDateScore,
+        exactDate && candidate.startDate === exactDate
+          ? `Старт попал в предпочтительную дату ${formatDisplayDate(exactDate)}. ${description}`
+          : description,
+        specialDateScore >= 12 ? "positive" : specialDateScore >= 0 ? "neutral" : "negative"
+      )
+    );
+  }
 
   if (assistantScore.delta) {
     breakdown.push(
@@ -505,6 +678,8 @@ function pickBestSlot({
   compiled,
   maxPerDay,
   assistantDirectives,
+  specialScheduleRule,
+  performanceReports,
 }) {
   const dates = dateRange(windowStart, windowEnd);
   let best = null;
@@ -532,6 +707,8 @@ function pickBestSlot({
       compiled,
       maxPerDay,
       assistantDirectives,
+      specialScheduleRule,
+      performanceReports,
     });
 
     if (!scored) continue;
@@ -555,6 +732,205 @@ function pickBestSlot({
       .sort((a, b) => b.score - a.score)
       .slice(0, 3),
   };
+}
+
+function getRequirementWindow(requirement) {
+  if (requirement.hasFixedDates === "yes" && requirement.fixedStartDate) {
+    return {
+      start: requirement.fixedStartDate,
+      end: requirement.fixedEndDate || requirement.fixedStartDate,
+    };
+  }
+
+  return {
+    start: requirement.weekStart,
+    end: requirement.weekEnd,
+  };
+}
+
+function getRequirementTargetChannels(requirement, channels) {
+  if (Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0) {
+    return channels.filter((channel) => requirement.channelIds.includes(channel.id));
+  }
+
+  return [...channels];
+}
+
+function buildProposedLaunch({
+  requirement,
+  channel,
+  bestSlot,
+  effectiveStart,
+  effectiveEnd,
+  assistantDirectives,
+  specialScheduleRule,
+  channelAttempts,
+  previousLaunch,
+}) {
+  return {
+    id:
+      previousLaunch?.id ||
+      `proposed-${channel.id}-${requirement.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`,
+    game: requirement.game,
+    channelId: channel.id,
+    startDate: bestSlot.startDate,
+    endDate: bestSlot.endDate,
+    duration: getChannelDuration(channel),
+    platform: previousLaunch?.platform || "АМ+АО",
+    audience: requirement.audience || "",
+    priority: normalizeLaunchPriority(requirement.priority),
+    planningStatus: previousLaunch?.planningStatus || "бэклог",
+    sentBaseCount: previousLaunch?.sentBaseCount || "",
+    campaignType: previousLaunch?.campaignType || "CRM акция",
+    comment: requirement.comment
+      ? `[Авто] ${requirement.comment}`
+      : "[Авто] Сгенерировано умным планировщиком",
+    issues: [],
+    conflictStatus: "ok",
+    earliestStartDate: effectiveStart,
+    latestStartDate: effectiveEnd,
+    manager: previousLaunch?.manager || "",
+    _fromRequirementId: requirement.id,
+    _score: bestSlot.score,
+    _planningMeta: {
+      score: bestSlot.score,
+      breakdown: bestSlot.breakdown,
+      appliedRules: bestSlot.appliedRules,
+      alternatives: bestSlot.alternatives,
+      windowStart: effectiveStart,
+      windowEnd: effectiveEnd,
+      channelId: channel.id,
+      assistantDirectives,
+      specialScheduleRule,
+      channelAttempts:
+        channelAttempts ||
+        previousLaunch?._planningMeta?.channelAttempts ||
+        [],
+    },
+  };
+}
+
+function optimizeProposedLaunches({
+  proposed,
+  requirements,
+  channels,
+  existingLaunches,
+  compiled,
+  maxPerDay,
+  assistantDirectives,
+  performanceReports,
+}) {
+  if (!Array.isArray(proposed) || proposed.length === 0) return proposed;
+
+  const requirementById = new Map(requirements.map((item) => [item.id, item]));
+  const optimized = proposed.map((launch) => ({ ...launch }));
+  let pool = [...existingLaunches, ...optimized];
+
+  optimized.forEach((launch, index) => {
+    const requirement = requirementById.get(launch._fromRequirementId);
+    if (!requirement) return;
+
+    const { start: windowStart, end: windowEnd } = getRequirementWindow(requirement);
+    if (!windowStart || !windowEnd) return;
+
+    const currentScore = Number(launch._score || launch._planningMeta?.score || 0);
+    const poolWithoutCurrent = pool.filter((item) => item.id !== launch.id);
+    const targetChannels = getRequirementTargetChannels(requirement, channels);
+    let bestReplacement = null;
+
+    targetChannels.forEach((channel) => {
+      const candidate = {
+        channelId: channel.id,
+        game: requirement.game,
+        audience: requirement.audience || "",
+        platform: launch.platform || "АМ+АО",
+        priority: requirement.priority,
+        campaignType: launch.campaignType || "CRM акция",
+        duration: getChannelDuration(channel),
+      };
+
+      const hardCheck = evaluateAssistantHardRules(candidate, compiled);
+      if (hardCheck.blocked) return;
+
+      const dateOverride = getAssistantDateWindowOverride(requirement, channel.id, compiled);
+      let effectiveStart = dateOverride?.start || windowStart;
+      let effectiveEnd = dateOverride?.end || windowEnd;
+      const specialScheduleRule = buildKBAudienceScheduleRule(
+        requirement,
+        channel,
+        poolWithoutCurrent,
+        channels,
+        effectiveStart
+      );
+
+      if (specialScheduleRule) {
+        effectiveStart = specialScheduleRule.hardWindowStart;
+        effectiveEnd = specialScheduleRule.hardWindowEnd;
+      }
+
+      const bestSlot = pickBestSlot({
+        requirement,
+        channel,
+        windowStart: effectiveStart,
+        windowEnd: effectiveEnd,
+        existing: poolWithoutCurrent,
+        compiled,
+        maxPerDay,
+        assistantDirectives,
+        specialScheduleRule,
+        performanceReports,
+      });
+
+      if (!bestSlot) return;
+
+      const candidateLaunch = buildProposedLaunch({
+        requirement,
+        channel,
+        bestSlot,
+        effectiveStart,
+        effectiveEnd,
+        assistantDirectives,
+        specialScheduleRule,
+        previousLaunch: launch,
+      });
+      const issues = detectConflicts(candidateLaunch, poolWithoutCurrent, channels);
+      candidateLaunch.issues = issues;
+      candidateLaunch.conflictStatus = issues.length ? "conflict" : "ok";
+
+      if (issues.length) return;
+
+      const improvement = Number(bestSlot.score || 0) - currentScore;
+      const changesChannel = candidateLaunch.channelId !== launch.channelId;
+      const changesDate = candidateLaunch.startDate !== launch.startDate;
+
+      if (
+        improvement > 4 ||
+        (improvement > 1.5 && (changesChannel || changesDate))
+      ) {
+        if (
+          !bestReplacement ||
+          Number(candidateLaunch._score || 0) > Number(bestReplacement._score || 0)
+        ) {
+          bestReplacement = {
+            ...candidateLaunch,
+            _planningMeta: {
+              ...candidateLaunch._planningMeta,
+              optimizedInSecondPass: true,
+            },
+          };
+        }
+      }
+    });
+
+    if (bestReplacement) {
+      optimized[index] = bestReplacement;
+      pool = [...existingLaunches, ...optimized];
+    }
+  });
+
+  return optimized;
 }
 
 export async function downloadLaunchesTemplate() {
@@ -611,6 +987,7 @@ export function buildSchedule({
   channels = [],
   rules = [],
   existingLaunches = [],
+  performanceReports = [],
   assistantContext = {},
 }) {
   const compiled = compileAssistantRules(rules);
@@ -647,18 +1024,11 @@ export function buildSchedule({
   );
 
   for (const req of sorted) {
-    if (req.status === "отклонено") continue;
-
-    let windowStart;
-    let windowEnd;
-
-    if (req.hasFixedDates === "yes" && req.fixedStartDate) {
-      windowStart = req.fixedStartDate;
-      windowEnd = req.fixedEndDate || req.fixedStartDate;
-    } else {
-      windowStart = req.weekStart;
-      windowEnd = req.weekEnd;
+    if (!PLANNABLE_REQUIREMENT_STATUSES.includes(req.status || "новое")) {
+      continue;
     }
+
+    let { start: windowStart, end: windowEnd } = getRequirementWindow(req);
 
     if (!windowStart || !windowEnd) {
       skipped.push({ req, reason: "Не задано окно дат" });
@@ -670,19 +1040,7 @@ export function buildSchedule({
       req.weekEnd || windowEnd
     );
 
-    let targetChannels = [...channels];
-    if (Array.isArray(req.channelIds) && req.channelIds.length > 0) {
-      targetChannels = targetChannels.filter((channel) =>
-        req.channelIds.includes(channel.id)
-      );
-    } else {
-      const uncoveredChannels = targetChannels.filter(
-        (channel) => !coverageSet.has(channel.id)
-      );
-      if (uncoveredChannels.length > 0) {
-        targetChannels = uncoveredChannels;
-      }
-    }
+    let targetChannels = getRequirementTargetChannels(req, channels);
 
     if (targetChannels.length === 0) {
       skipped.push({
@@ -693,13 +1051,26 @@ export function buildSchedule({
     }
 
     const priorityTier = getPriorityTier(req.priority);
+    const gameProfile = getGamePlanningProfile(req.game);
     targetChannels = [...targetChannels].sort((a, b) => {
+      const windowCoverageStart = req.fixedStartDate || req.weekStart || windowStart;
+      const windowCoverageEnd = req.fixedEndDate || req.weekEnd || windowEnd;
       const scoreA =
-        scoreChannelEffectiveness(a.id, pool).score *
-        getEffectivenessPriorityWeight(priorityTier);
+        scoreChannelEffectiveness(a, req, performanceReports).score *
+          getEffectivenessPriorityWeight(priorityTier) *
+          gameProfile.channelSelectionEffectivenessWeight +
+        (coverageSet.has(a.id) ? 0 : gameProfile.channelSelectionCoverageBonus) -
+        countChannelLaunchesInWindow(pool, a.id, windowCoverageStart, windowCoverageEnd) *
+          4 *
+          gameProfile.channelSelectionLoadPenalty;
       const scoreB =
-        scoreChannelEffectiveness(b.id, pool).score *
-        getEffectivenessPriorityWeight(priorityTier);
+        scoreChannelEffectiveness(b, req, performanceReports).score *
+          getEffectivenessPriorityWeight(priorityTier) *
+          gameProfile.channelSelectionEffectivenessWeight +
+        (coverageSet.has(b.id) ? 0 : gameProfile.channelSelectionCoverageBonus) -
+        countChannelLaunchesInWindow(pool, b.id, windowCoverageStart, windowCoverageEnd) *
+          4 *
+          gameProfile.channelSelectionLoadPenalty;
       return scoreB - scoreA;
     });
 
@@ -729,8 +1100,20 @@ export function buildSchedule({
       }
 
       const dateOverride = getAssistantDateWindowOverride(req, channel.id, compiled);
-      const effectiveStart = dateOverride?.start || windowStart;
-      const effectiveEnd = dateOverride?.end || windowEnd;
+      let effectiveStart = dateOverride?.start || windowStart;
+      let effectiveEnd = dateOverride?.end || windowEnd;
+      const specialScheduleRule = buildKBAudienceScheduleRule(
+        req,
+        channel,
+        pool,
+        channels,
+        effectiveStart
+      );
+
+      if (specialScheduleRule) {
+        effectiveStart = specialScheduleRule.hardWindowStart;
+        effectiveEnd = specialScheduleRule.hardWindowEnd;
+      }
 
       const bestSlot = pickBestSlot({
         requirement: req,
@@ -741,6 +1124,8 @@ export function buildSchedule({
         compiled,
         maxPerDay,
         assistantDirectives,
+        specialScheduleRule,
+        performanceReports,
       });
 
       if (!bestSlot) {
@@ -751,42 +1136,15 @@ export function buildSchedule({
         continue;
       }
 
-      const newLaunch = {
-        id: `proposed-${channel.id}-${req.id}-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 6)}`,
-        game: req.game,
-        channelId: channel.id,
-        startDate: bestSlot.startDate,
-        endDate: bestSlot.endDate,
-        duration: candidate.duration,
-        platform: "АМ+АО",
-        audience: candidate.audience,
-        priority: normalizeLaunchPriority(req.priority),
-        planningStatus: "бэклог",
-        sentBaseCount: "",
-        campaignType: "CRM акция",
-        comment: req.comment
-          ? `[Авто] ${req.comment}`
-          : "[Авто] Сгенерировано умным планировщиком",
-        issues: [],
-        conflictStatus: "ok",
-        earliestStartDate: effectiveStart,
-        latestStartDate: effectiveEnd,
-        manager: "",
-        _fromRequirementId: req.id,
-        _score: bestSlot.score,
-        _planningMeta: {
-          score: bestSlot.score,
-          breakdown: bestSlot.breakdown,
-          appliedRules: bestSlot.appliedRules,
-          alternatives: bestSlot.alternatives,
-          windowStart: effectiveStart,
-          windowEnd: effectiveEnd,
-          channelId: channel.id,
-          assistantDirectives,
-        },
-      };
+      const newLaunch = buildProposedLaunch({
+        requirement: req,
+        channel,
+        bestSlot,
+        effectiveStart,
+        effectiveEnd,
+        assistantDirectives,
+        specialScheduleRule,
+      });
 
       const issues = detectConflicts(newLaunch, pool, channels);
       newLaunch.issues = issues;
@@ -827,6 +1185,20 @@ export function buildSchedule({
       });
     }
   }
+
+  const optimizedProposed = optimizeProposedLaunches({
+    proposed,
+    requirements,
+    channels,
+    existingLaunches,
+    compiled,
+    maxPerDay,
+    assistantDirectives,
+    performanceReports,
+  });
+
+  proposed.length = 0;
+  proposed.push(...optimizedProposed);
 
   proposed.sort((a, b) => {
     const scoreDiff = Number(b._score || 0) - Number(a._score || 0);

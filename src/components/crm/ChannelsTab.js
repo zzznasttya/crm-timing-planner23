@@ -249,7 +249,7 @@ export default function ChannelsTab({
       <div className="toolbar">
         <div className="toolbar-left" style={{ flex: 1 }}>
           <input
-            placeholder="Поиск по названию, id и версиям"
+            placeholder="Поиск по названию и версиям"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ maxWidth: "420px" }}
@@ -316,16 +316,6 @@ export default function ChannelsTab({
                     </div>
                   )}
 
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#64748b",
-                      marginTop: "4px",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    id: {channel.id}
-                  </div>
                 </div>
 
               </div>

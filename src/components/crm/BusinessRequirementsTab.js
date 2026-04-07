@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "./Toast";
-import { formatDisplayDate, getChannelDisplayName } from "../../lib/crm-store";
+import { formatDisplayDate, getChannelDisplayName, GAMES } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
   getCurrentWeekStart,
@@ -33,9 +33,7 @@ function priorityBadgeClass(priority) {
 }
 
 function statusBadgeClass(status) {
-  if (status === "согласовано") return "badge badge-green";
-  if (status === "в работе") return "badge badge-blue";
-  if (status === "отклонено") return "badge badge-red";
+  if (status === "учтено") return "badge badge-green";
   return "badge";
 }
 
@@ -441,7 +439,7 @@ function RequirementInlineForm({
             value={value.game}
             onChange={(e) => upd("game", e.target.value)}
           >
-            {["Матрёшки", "Суперигра", "КНБ", "Алхимия"].map((g) => (
+            {GAMES.map((g) => (
               <option key={g} value={g}>
                 {g}
               </option>

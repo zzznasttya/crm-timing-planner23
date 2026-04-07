@@ -1,10 +1,8 @@
+import { GAMES } from "./game-catalog";
+
 export const PRIORITY_OPTIONS = ["0", "1", "2", "3", "4", "5"];
-export const REQUIREMENT_STATUS_OPTIONS = [
-  "новое",
-  "в работе",
-  "согласовано",
-  "отклонено",
-];
+export const REQUIREMENT_STATUS_OPTIONS = ["новое", "учтено"];
+export const PLANNABLE_REQUIREMENT_STATUSES = ["новое"];
 export const AUDIENCE_OPTIONS = [
   "АКБ",
   "победители",
@@ -16,7 +14,7 @@ export const AUDIENCE_OPTIONS = [
   "клиенты с остатками КБ",
 ];
 
-const DEFAULT_GAME = "Матрёшки";
+const DEFAULT_GAME = GAMES[0];
 
 function normalizeText(value) {
   return String(value || "")
@@ -172,6 +170,14 @@ export function normalizeRequirement(item) {
       ? String(item?.fixedEndDate || item?.fixedStartDate || "").trim()
       : "";
 
+  const normalizedStatus = normalizeText(item?.status);
+  const safeStatus =
+    normalizedStatus === "учтено"
+      ? "учтено"
+      : REQUIREMENT_STATUS_OPTIONS.includes(item?.status)
+      ? item.status
+      : "новое";
+
   return {
     id:
       item?.id ||
@@ -187,9 +193,7 @@ export function normalizeRequirement(item) {
     fixedEndDate,
     desiredResult: item?.desiredResult || "",
     comment: item?.comment || "",
-    status: REQUIREMENT_STATUS_OPTIONS.includes(item?.status)
-      ? item.status
-      : "новое",
+    status: safeStatus,
   };
 }
 

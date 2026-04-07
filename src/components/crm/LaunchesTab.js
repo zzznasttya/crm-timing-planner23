@@ -5,6 +5,7 @@ import {
   detectConflicts,
   getChannelDisplayName,
   formatDisplayDate,
+  GAMES,
 } from "../../lib/crm-store";
 import WeekRangeNavigator, {
   buildPeriodRange,
@@ -14,7 +15,6 @@ import WeekRangeNavigator, {
 const PLATFORMS = ["АМ", "АО", "АМ+АО"];
 const PRIORITIES = ["0", "1", "2", "3", "4", "5"];
 const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "пилот / тест"];
-const GAMES = ["Матрёшки", "Суперигра", "КНБ", "Алхимия"];
 const GAME_PILL_STYLES = {
   "Матрёшки": {
     background: "#ffe3e3",
@@ -35,6 +35,11 @@ const GAME_PILL_STYLES = {
     background: "#fff0f0",
     color: "#c40000",
     borderColor: "#ffd2d2",
+  },
+  "Пуш и куш": {
+    background: "#17181a",
+    color: "#ffffff",
+    borderColor: "#17181a",
   },
 };
 const CHANNEL_PILL_STYLES = [

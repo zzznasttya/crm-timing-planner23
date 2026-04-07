@@ -136,6 +136,10 @@ function normalizeToken(value) {
     .trim();
 }
 
+export function normalizePerformanceText(value) {
+  return normalizeToken(value);
+}
+
 function humanizeRawGame(rawGame) {
   const raw = String(rawGame || "").trim();
   if (!raw) return "—";
@@ -145,6 +149,22 @@ function humanizeRawGame(rawGame) {
     .replace(/[_-]+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function normalizePerformanceGame(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return normalizeToken(GAME_NAME_MAP[raw] || raw);
+}
+
+export function normalizePerformanceAudience(value) {
+  const token = normalizeToken(value);
+  if (!token) return "";
+  if (token.includes("winners") || token.includes("побед")) {
+    return normalizeToken("Победители");
+  }
+  if (token === "all") return "all";
+  return token;
 }
 
 function inferAudience(rawDescriptor) {
@@ -364,4 +384,98 @@ export async function importPerformanceReportsFromFiles(files, channels) {
   }
 
   return importedRows;
+}
+
+export function getChannelPerformanceSnapshot({
+  channel,
+  requirement,
+  performanceReports = [],
+}) {
+  const channelId = channel?.id || "";
+  const channelName = normalizeToken(getChannelDisplayName(channel) || channel?.name || "");
+  const requirementGame = normalizePerformanceGame(requirement?.game);
+  const requirementAudience = normalizePerformanceAudience(requirement?.audience);
+
+  const relevantRows = performanceReports.filter((row) => {
+    const rowChannelId = String(row?.channelId || "").trim();
+    const rowChannelName = normalizeToken(row?.channelName || "");
+
+    if (channelId) {
+      if (rowChannelId) return rowChannelId === channelId;
+      if (channelName && rowChannelName) return rowChannelName === channelName;
+      return false;
+    }
+
+    return channelName && rowChannelName === channelName;
+  });
+
+  if (!relevantRows.length) return null;
+
+  const overallRows = relevantRows;
+  const gameRows = requirementGame
+    ? relevantRows.filter((row) => normalizePerformanceGame(row?.game) === requirementGame)
+    : [];
+  const audienceRows = requirementAudience
+    ? relevantRows.filter(
+        (row) => normalizePerformanceAudience(row?.audience) === requirementAudience
+      )
+    : [];
+  const combinedRows =
+    requirementGame && requirementAudience
+      ? relevantRows.filter(
+          (row) =>
+            normalizePerformanceGame(row?.game) === requirementGame &&
+            normalizePerformanceAudience(row?.audience) === requirementAudience
+        )
+      : [];
+
+  function aggregate(rows) {
+    const sent = rows.reduce((sum, row) => sum + toNumber(row.sentCount), 0);
+    const delivered = rows.reduce((sum, row) => sum + toNumber(row.deliveredCount), 0);
+    const converted = rows.reduce((sum, row) => sum + toNumber(row.convertedCount), 0);
+    const denominator = delivered || sent;
+    const rate = denominator > 0 ? converted / denominator : 0;
+    const confidence = Math.min(1, rows.length / 6 + denominator / 2000000);
+
+    return {
+      rowsCount: rows.length,
+      sent,
+      delivered,
+      converted,
+      denominator,
+      rate,
+      confidence,
+    };
+  }
+
+  const overall = aggregate(overallRows);
+  const byGame = gameRows.length ? aggregate(gameRows) : null;
+  const byAudience = audienceRows.length ? aggregate(audienceRows) : null;
+  const combined = combinedRows.length ? aggregate(combinedRows) : null;
+
+  const bestMatch = combined || byGame || byAudience || overall;
+  const weightedRate = bestMatch.rate * (0.7 + bestMatch.confidence * 0.6);
+  const score = Number((weightedRate * 28).toFixed(1));
+
+  let scopeLabel = "по каналу в целом";
+  if (combined) scopeLabel = "по сочетанию игры и аудитории";
+  else if (byGame) scopeLabel = "по этой игре";
+  else if (byAudience) scopeLabel = "по этой аудитории";
+
+  return {
+    score,
+    rate: bestMatch.rate,
+    confidence: bestMatch.confidence,
+    rowsCount: bestMatch.rowsCount,
+    scopeLabel,
+    description: `Есть фактическая конверсия ${bestMatch.rate
+      .toFixed(3)
+      .replace(".", ",")} ${scopeLabel}; строк отчётности: ${bestMatch.rowsCount}.`,
+    tone:
+      weightedRate >= 0.12
+        ? "positive"
+        : weightedRate >= 0.05
+        ? "neutral"
+        : "negative",
+  };
 }

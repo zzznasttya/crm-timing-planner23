@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { addDays, format, parseISO } from "date-fns";
 import {
   calculateEndDate,
   detectConflicts,
@@ -115,6 +116,70 @@ function compactReasonList(planning, launch) {
   );
 }
 
+function normalizeDateOrNull(value) {
+  if (!value) return null;
+  const parsed = parseISO(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function clampStartDateToWindow(startDate, windowStart, windowEnd) {
+  const parsedStart = normalizeDateOrNull(startDate);
+  const parsedWindowStart = normalizeDateOrNull(windowStart);
+  const parsedWindowEnd = normalizeDateOrNull(windowEnd);
+
+  if (!parsedStart) return startDate;
+  if (parsedWindowStart && parsedStart < parsedWindowStart) {
+    return format(parsedWindowStart, "yyyy-MM-dd");
+  }
+  if (parsedWindowEnd && parsedStart > parsedWindowEnd) {
+    return format(parsedWindowEnd, "yyyy-MM-dd");
+  }
+  return format(parsedStart, "yyyy-MM-dd");
+}
+
+function getAlternativeDates(launch) {
+  const planning = launch?._planningMeta || {};
+  return (planning.alternatives || [])
+    .map((item) => item.startDate)
+    .filter(Boolean)
+    .filter((value, index, array) => array.indexOf(value) === index)
+    .sort();
+}
+
+function getNextAlternativeDate(launch) {
+  const dates = getAlternativeDates(launch).filter(
+    (date) => date !== launch.startDate
+  );
+  return dates[0] || "";
+}
+
+function getAlternativeChannelAttempts(launch) {
+  const planning = launch?._planningMeta || {};
+  return (planning.channelAttempts || []).filter(
+    (attempt) => attempt?.launch && attempt.channelId && attempt.channelId !== launch.channelId
+  );
+}
+
+function groupLaunchesByReviewState(launches, decisions) {
+  return {
+    ready: launches.filter(
+      (launch) =>
+        decisions[launch.id] === "accepted" && launch.conflictStatus !== "conflict"
+    ),
+    review: launches.filter(
+      (launch) =>
+        (decisions[launch.id] || "pending") === "pending" &&
+        launch.conflictStatus !== "conflict"
+    ),
+    risk: launches.filter(
+      (launch) =>
+        launch.conflictStatus === "conflict" &&
+        decisions[launch.id] !== "rejected"
+    ),
+    rejected: launches.filter((launch) => decisions[launch.id] === "rejected"),
+  };
+}
+
 export default function ScheduleDraftModal({
   proposed,
   skipped,
@@ -146,6 +211,31 @@ export default function ScheduleDraftModal({
   const modifiedCount = draftLaunches.filter((launch) =>
     hasLaunchChanged(originalById[launch.id], launch)
   ).length;
+
+  const groupedLaunches = useMemo(
+    () => groupLaunchesByReviewState(draftLaunches, decisions),
+    [decisions, draftLaunches]
+  );
+
+  const coveredChannelsCount = useMemo(
+    () =>
+      new Set(
+        draftLaunches
+          .filter((launch) => decisions[launch.id] === "accepted")
+          .map((launch) => launch.channelId)
+          .filter(Boolean)
+      ).size,
+    [decisions, draftLaunches]
+  );
+
+  const highPriorityAcceptedCount = useMemo(
+    () =>
+      draftLaunches.filter(
+        (launch) =>
+          decisions[launch.id] === "accepted" && Number(launch.priority ?? 5) <= 1
+      ).length,
+    [decisions, draftLaunches]
+  );
 
   function setDecision(id, decision) {
     setDecisions((prev) => ({
@@ -196,6 +286,47 @@ export default function ScheduleDraftModal({
     }));
   }
 
+  function nudgeLaunchDate(id, direction) {
+    const launch = draftLaunches.find((item) => item.id === id);
+    if (!launch?.startDate) return;
+    const planning = launch._planningMeta || {};
+    const nextStart = format(
+      addDays(parseISO(launch.startDate), direction === "earlier" ? -1 : 1),
+      "yyyy-MM-dd"
+    );
+    const clampedStart = clampStartDateToWindow(
+      nextStart,
+      planning.windowStart || launch.earliestStartDate,
+      planning.windowEnd || launch.latestStartDate
+    );
+    if (clampedStart !== launch.startDate) {
+      updateLaunch(id, { startDate: clampedStart });
+    }
+  }
+
+  function applyNextAlternativeDate(id) {
+    const launch = draftLaunches.find((item) => item.id === id);
+    const nextDate = getNextAlternativeDate(launch);
+    if (!nextDate) return;
+    updateLaunch(id, { startDate: nextDate });
+  }
+
+  function applyNextChannel(id) {
+    const launch = draftLaunches.find((item) => item.id === id);
+    const attempts = getAlternativeChannelAttempts(launch);
+    if (!attempts.length) return;
+
+    const nextAttempt = attempts[0];
+    const nextLaunch = nextAttempt.launch;
+    updateLaunch(id, {
+      channelId: nextLaunch.channelId,
+      startDate: nextLaunch.startDate,
+      audience: nextLaunch.audience,
+      priority: nextLaunch.priority,
+      comment: nextLaunch.comment,
+    });
+  }
+
   function resetLaunch(id) {
     const original = originalById[id];
     if (!original) return;
@@ -219,7 +350,321 @@ export default function ScheduleDraftModal({
     onConfirm(accepted);
   }
 
-  const allAccepted = acceptedCount === draftLaunches.length;
+  const allAccepted =
+    draftLaunches.length > 0 && acceptedCount === draftLaunches.length;
+
+  function renderLaunchCard(launch) {
+    const original = originalById[launch.id];
+    const decision = decisions[launch.id] || "pending";
+    const modified = hasLaunchChanged(original, launch);
+    const planning = launch._planningMeta || {};
+    const isRejected = decision === "rejected";
+    const isEditing = editingId === launch.id;
+    const nextAlternativeDate = getNextAlternativeDate(launch);
+    const alternativeChannelAttempts = getAlternativeChannelAttempts(launch);
+
+    return (
+      <div
+        key={launch.id}
+        className="section-card"
+        style={{
+          padding: "16px",
+          opacity: isRejected ? 0.55 : 1,
+          borderColor:
+            launch.conflictStatus === "conflict" ? "#fca5a5" : undefined,
+          background:
+            launch.conflictStatus === "conflict" ? "#fff8f8" : undefined,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 1fr)",
+            gap: "18px",
+            alignItems: "start",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                alignItems: "center",
+                marginBottom: "10px",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: "18px" }}>{launch.game}</div>
+              {decisionBadge(decision, modified)}
+              {launch.conflictStatus === "conflict" && (
+                <span className="badge badge-red" title={launch.issues?.join("\n")}>
+                  Конфликт
+                </span>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(160px, 1fr))",
+                gap: "10px 16px",
+                marginBottom: "14px",
+                fontSize: "14px",
+              }}
+            >
+              <div>
+                <div className="muted small">Канал</div>
+                <div>{getChannelName(launch.channelId, channels)}</div>
+              </div>
+              <div>
+                <div className="muted small">Аудитория</div>
+                <div>{launch.audience || "—"}</div>
+              </div>
+              <div>
+                <div className="muted small">Период запуска</div>
+                <div>
+                  {formatDisplayDate(launch.startDate)} —{" "}
+                  {formatDisplayDate(launch.endDate)}
+                </div>
+              </div>
+              <div>
+                <div className="muted small">Длительность / приоритет</div>
+                <div>
+                  {launch.duration} дн. / {launch.priority}
+                </div>
+              </div>
+              <div>
+                <div className="muted small">Допустимое окно</div>
+                <div>
+                  {formatDisplayDate(planning.windowStart || launch.earliestStartDate)} —{" "}
+                  {formatDisplayDate(planning.windowEnd || launch.latestStartDate)}
+                </div>
+              </div>
+              <div>
+                <div className="muted small">Быстрые альтернативы</div>
+                <div className="small">
+                  {nextAlternativeDate
+                    ? `Следующая дата: ${formatDisplayDate(nextAlternativeDate)}`
+                    : alternativeChannelAttempts[0]?.launch
+                    ? `Следующий канал: ${getChannelName(
+                        alternativeChannelAttempts[0].launch.channelId,
+                        channels
+                      )}`
+                    : "Альтернативы не найдены"}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginBottom: isEditing ? "14px" : 0,
+              }}
+            >
+              <button
+                className={decision === "accepted" ? "btn btn-primary" : "btn"}
+                onClick={() => setDecision(launch.id, "accepted")}
+              >
+                Принять
+              </button>
+              <button
+                className={isEditing ? "btn btn-primary" : "btn"}
+                onClick={() =>
+                  setEditingId((prev) => (prev === launch.id ? null : launch.id))
+                }
+              >
+                {isEditing ? "Скрыть правки" : "Изменить"}
+              </button>
+              <button
+                className={decision === "rejected" ? "btn btn-danger" : "btn"}
+                onClick={() => setDecision(launch.id, "rejected")}
+              >
+                Отклонить
+              </button>
+              {decision === "pending" && (
+                <span className="small muted" style={{ alignSelf: "center" }}>
+                  Выбери действие для этого предложения
+                </span>
+              )}
+              {modified && (
+                <button className="btn" onClick={() => resetLaunch(launch.id)}>
+                  Сбросить изменения
+                </button>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginTop: "10px",
+              }}
+            >
+              <button className="btn" onClick={() => nudgeLaunchDate(launch.id, "earlier")}>
+                Поставить раньше
+              </button>
+              <button className="btn" onClick={() => nudgeLaunchDate(launch.id, "later")}>
+                Поставить позже
+              </button>
+              <button
+                className="btn"
+                onClick={() => applyNextAlternativeDate(launch.id)}
+                disabled={!nextAlternativeDate}
+              >
+                Следующая дата
+              </button>
+              <button
+                className="btn"
+                onClick={() => applyNextChannel(launch.id)}
+                disabled={!alternativeChannelAttempts.length}
+              >
+                Следующий канал
+              </button>
+            </div>
+
+            {isEditing && (
+              <div
+                style={{
+                  marginTop: "14px",
+                  padding: "14px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "14px",
+                  background: "#fafafa",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(180px, 1fr))",
+                    gap: "12px 16px",
+                  }}
+                >
+                  <div>
+                    <label>Канал</label>
+                    <select
+                      value={launch.channelId || ""}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { channelId: e.target.value })
+                      }
+                    >
+                      {channels.map((channel) => (
+                        <option key={channel.id} value={channel.id}>
+                          {getChannelName(channel.id, channels)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Старт</label>
+                    <input
+                      type="date"
+                      value={launch.startDate || ""}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { startDate: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label>Длительность</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={launch.duration || 1}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, {
+                          duration: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label>Конец</label>
+                    <input value={formatDisplayDate(launch.endDate)} disabled />
+                  </div>
+                  <div>
+                    <label>Аудитория</label>
+                    <input
+                      type="text"
+                      value={launch.audience || ""}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { audience: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label>Приоритет</label>
+                    <select
+                      value={String(launch.priority ?? "3")}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { priority: e.target.value })
+                      }
+                    >
+                      {["0", "1", "2", "3", "4", "5"].map((priority) => (
+                        <option key={priority} value={priority}>
+                          {priority}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label>Комментарий</label>
+                    <input
+                      type="text"
+                      value={launch.comment || ""}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { comment: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>{compactReasonList(planning, launch)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderGroup(title, launches, tone = "default", description = "") {
+    if (!launches.length) return null;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: "15px",
+                color:
+                  tone === "danger"
+                    ? "#b91c1c"
+                    : tone === "success"
+                    ? "#166534"
+                    : "#17181a",
+              }}
+            >
+              {title} ({launches.length})
+            </div>
+            {description ? <div className="small muted">{description}</div> : null}
+          </div>
+        </div>
+        {launches.map((launch) => renderLaunchCard(launch))}
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop" style={{ zIndex: 200 }}>
@@ -244,8 +689,8 @@ export default function ScheduleDraftModal({
           <div>
             <h3 style={{ margin: 0 }}>Предлагаемый тайминг</h3>
             <div style={{ fontSize: "13px", color: "#64748b", marginTop: "6px" }}>
-              Для каждого предложения можно выбрать действие: принять, отклонить
-              или изменить перед добавлением.
+              Сначала можно быстро посмотреть общую картину, а потом принять,
+              отклонить или поправить каждое предложение.
             </div>
           </div>
 
@@ -287,256 +732,72 @@ export default function ScheduleDraftModal({
           </span>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: "10px",
+            marginBottom: "16px",
+          }}
+        >
+          <div className="section-card" style={{ padding: "14px" }}>
+            <div className="small muted">Готово к добавлению</div>
+            <div style={{ fontSize: "28px", fontWeight: 800 }}>
+              {groupedLaunches.ready.length}
+            </div>
+            <div className="small muted">Принятые предложения без конфликта</div>
+          </div>
+          <div className="section-card" style={{ padding: "14px" }}>
+            <div className="small muted">Нужно проверить</div>
+            <div style={{ fontSize: "28px", fontWeight: 800 }}>
+              {groupedLaunches.review.length}
+            </div>
+            <div className="small muted">Пока без окончательного решения</div>
+          </div>
+          <div className="section-card" style={{ padding: "14px" }}>
+            <div className="small muted">Покрыто каналов</div>
+            <div style={{ fontSize: "28px", fontWeight: 800 }}>
+              {coveredChannelsCount}
+            </div>
+            <div className="small muted">Среди принятых предложений</div>
+          </div>
+          <div className="section-card" style={{ padding: "14px" }}>
+            <div className="small muted">High-priority</div>
+            <div style={{ fontSize: "28px", fontWeight: 800 }}>
+              {highPriorityAcceptedCount}
+            </div>
+            <div className="small muted">Принятые кампании с приоритетом 0-1</div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "18px" }}>
           {draftLaunches.length > 0 ? (
-            draftLaunches.map((launch) => {
-              const original = originalById[launch.id];
-              const decision = decisions[launch.id] || "accepted";
-              const modified = hasLaunchChanged(original, launch);
-              const planning = launch._planningMeta || {};
-              const isRejected = decision === "rejected";
-              const isEditing = editingId === launch.id;
-
-              return (
-                <div
-                  key={launch.id}
-                  className="section-card"
-                  style={{
-                    padding: "16px",
-                    opacity: isRejected ? 0.55 : 1,
-                    borderColor:
-                      launch.conflictStatus === "conflict" ? "#fca5a5" : undefined,
-                    background:
-                      launch.conflictStatus === "conflict" ? "#fff8f8" : undefined,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 1fr)",
-                      gap: "18px",
-                      alignItems: "start",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "8px",
-                          alignItems: "center",
-                          marginBottom: "10px",
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, fontSize: "18px" }}>
-                          {launch.game}
-                        </div>
-                        {decisionBadge(decision, modified)}
-                        {launch.conflictStatus === "conflict" && (
-                          <span
-                            className="badge badge-red"
-                            title={launch.issues?.join("\n")}
-                          >
-                            Конфликт
-                          </span>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(160px, 1fr))",
-                          gap: "10px 16px",
-                          marginBottom: "14px",
-                          fontSize: "14px",
-                        }}
-                      >
-                        <div>
-                          <div className="muted small">Канал</div>
-                          <div>{getChannelName(launch.channelId, channels)}</div>
-                        </div>
-                        <div>
-                          <div className="muted small">Аудитория</div>
-                          <div>{launch.audience || "—"}</div>
-                        </div>
-                        <div>
-                          <div className="muted small">Период запуска</div>
-                          <div>
-                            {formatDisplayDate(launch.startDate)} —{" "}
-                            {formatDisplayDate(launch.endDate)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="muted small">Длительность / приоритет</div>
-                          <div>
-                            {launch.duration} дн. / {launch.priority}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="muted small">Допустимое окно</div>
-                          <div>
-                            {formatDisplayDate(
-                              planning.windowStart || launch.earliestStartDate
-                            )}{" "}
-                            —{" "}
-                            {formatDisplayDate(
-                              planning.windowEnd || launch.latestStartDate
-                            )}
-                          </div>
-                        </div>
-                        <div />
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "8px",
-                          marginBottom: isEditing ? "14px" : 0,
-                        }}
-                      >
-                        <button
-                          className={
-                            decision === "accepted" ? "btn btn-primary" : "btn"
-                          }
-                          onClick={() => setDecision(launch.id, "accepted")}
-                        >
-                          Принять
-                        </button>
-                        <button
-                          className={isEditing ? "btn btn-primary" : "btn"}
-                          onClick={() =>
-                            setEditingId((prev) =>
-                              prev === launch.id ? null : launch.id
-                            )
-                          }
-                        >
-                          {isEditing ? "Скрыть правки" : "Изменить"}
-                        </button>
-                        <button
-                          className={
-                            decision === "rejected" ? "btn btn-danger" : "btn"
-                          }
-                          onClick={() => setDecision(launch.id, "rejected")}
-                        >
-                          Отклонить
-                        </button>
-                        {decision === "pending" && (
-                          <span className="small muted" style={{ alignSelf: "center" }}>
-                            Выбери действие для этого предложения
-                          </span>
-                        )}
-                        {modified && (
-                          <button className="btn" onClick={() => resetLaunch(launch.id)}>
-                            Сбросить изменения
-                          </button>
-                        )}
-                      </div>
-
-                      {isEditing && (
-                        <div
-                          style={{
-                            marginTop: "14px",
-                            padding: "14px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "14px",
-                            background: "#fafafa",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(180px, 1fr))",
-                              gap: "12px 16px",
-                            }}
-                          >
-                            <div>
-                              <label>Канал</label>
-                              <select
-                                value={launch.channelId || ""}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, { channelId: e.target.value })
-                                }
-                              >
-                                {channels.map((channel) => (
-                                  <option key={channel.id} value={channel.id}>
-                                    {getChannelName(channel.id, channels)}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label>Старт</label>
-                              <input
-                                type="date"
-                                value={launch.startDate || ""}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, { startDate: e.target.value })
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label>Длительность</label>
-                              <input
-                                type="number"
-                                min="1"
-                                value={launch.duration || 1}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, {
-                                    duration: Math.max(1, Number(e.target.value) || 1),
-                                  })
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label>Конец</label>
-                              <input value={formatDisplayDate(launch.endDate)} disabled />
-                            </div>
-                            <div>
-                              <label>Аудитория</label>
-                              <input
-                                type="text"
-                                value={launch.audience || ""}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, { audience: e.target.value })
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label>Приоритет</label>
-                              <select
-                                value={String(launch.priority ?? "3")}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, { priority: e.target.value })
-                                }
-                              >
-                                {["0", "1", "2", "3", "4", "5"].map((priority) => (
-                                  <option key={priority} value={priority}>
-                                    {priority}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div style={{ gridColumn: "1 / -1" }}>
-                              <label>Комментарий</label>
-                              <input
-                                type="text"
-                                value={launch.comment || ""}
-                                onChange={(e) =>
-                                  updateLaunch(launch.id, { comment: e.target.value })
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>{compactReasonList(planning, launch)}</div>
-                  </div>
-                </div>
-              );
-            })
+            <>
+              {renderGroup(
+                "Готово к добавлению",
+                groupedLaunches.ready,
+                "success",
+                "Эти предложения уже приняты и не содержат видимых конфликтов."
+              )}
+              {renderGroup(
+                "Нуждается в проверке",
+                groupedLaunches.review,
+                "default",
+                "Планировщик считает их рабочими, но решение по ним ещё не принято."
+              )}
+              {renderGroup(
+                "Есть риск",
+                groupedLaunches.risk,
+                "danger",
+                "Здесь есть конфликты или спорные места, которые лучше поправить перед добавлением."
+              )}
+              {renderGroup(
+                "Отклонено",
+                groupedLaunches.rejected,
+                "default",
+                "Эти предложения не попадут в итоговый тайминг."
+              )}
+            </>
           ) : (
             <div
               className="section-card"
