@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   getChannelDisplayName,
   getChannelSubtitle,
@@ -33,6 +33,18 @@ function normalizeChannelDraft(channel) {
     androidMinVersion: channel.androidMinVersion || "All",
     androidMaxVersion: channel.androidMaxVersion || "All",
   };
+}
+
+function buildDuplicateChannel(channel, copyNumber = 1) {
+  const baseTitle = getChannelTitle(channel) || "Канал";
+  const copySuffix = copyNumber > 1 ? ` (копия ${copyNumber})` : " (копия)";
+
+  return normalizeChannelDraft({
+    ...channel,
+    id: `channel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: `${baseTitle}${copySuffix}`,
+    subtitle: getChannelSubtitle(channel),
+  });
 }
 
 function versionLabel(min, max) {
@@ -124,6 +136,8 @@ function ChannelForm({ value, onChange }) {
 export default function ChannelsTab({
   channels,
   onAddChannel,
+  onBulkAddChannels,
+  onBulkDeleteChannels,
   onUpdateChannel,
   onDeleteChannel,
 }) {
@@ -132,6 +146,8 @@ export default function ChannelsTab({
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [draft, setDraft] = useState(createEmptyChannel());
   const [editing, setEditing] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [lastSelectedId, setLastSelectedId] = useState(null);
 
   const filteredChannels = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -172,6 +188,20 @@ export default function ChannelsTab({
     };
   }, [channels]);
 
+  const selectedChannels = useMemo(
+    () => filteredChannels.filter((channel) => selectedIds.has(channel.id)),
+    [filteredChannels, selectedIds]
+  );
+
+  useEffect(() => {
+    const channelIds = new Set((Array.isArray(channels) ? channels : []).map((item) => item.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => channelIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [channels]);
+
   function handleOpenCreate() {
     setDraft(createEmptyChannel());
     setIsCreateOpen(true);
@@ -201,6 +231,87 @@ export default function ChannelsTab({
     if (!confirmed) return;
 
     onDeleteChannel(channel.id);
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setLastSelectedId(null);
+  }
+
+  function handleSelectChange(event, id) {
+    const shouldSelect = event.target.checked;
+    const isRangeSelection = event.nativeEvent?.shiftKey;
+    const visibleIds = filteredChannels.map((channel) => channel.id);
+
+    if (isRangeSelection && lastSelectedId && visibleIds.includes(lastSelectedId)) {
+      const startIndex = visibleIds.indexOf(lastSelectedId);
+      const endIndex = visibleIds.indexOf(id);
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        const [from, to] =
+          startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+        const rangeIds = visibleIds.slice(from, to + 1);
+
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((rangeId) => {
+            if (shouldSelect) {
+              next.add(rangeId);
+            } else {
+              next.delete(rangeId);
+            }
+          });
+          return next;
+        });
+        setLastSelectedId(id);
+        return;
+      }
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (shouldSelect) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+    setLastSelectedId(id);
+  }
+
+  function handleDuplicateSelected() {
+    if (!selectedChannels.length) return;
+
+    const duplicates = selectedChannels.map((channel, index) =>
+      buildDuplicateChannel(channel, index + 1)
+    );
+
+    if (typeof onBulkAddChannels === "function") {
+      onBulkAddChannels(duplicates);
+    } else {
+      duplicates.forEach((channel) => onAddChannel(channel));
+    }
+
+    clearSelection();
+  }
+
+  function handleDeleteSelected() {
+    if (!selectedChannels.length) return;
+
+    const confirmed = window.confirm(
+      `Удалить выбранные каналы: ${selectedChannels.length}?`
+    );
+    if (!confirmed) return;
+
+    const ids = selectedChannels.map((channel) => channel.id);
+    if (typeof onBulkDeleteChannels === "function") {
+      onBulkDeleteChannels(ids);
+    } else {
+      ids.forEach((id) => onDeleteChannel(id));
+    }
+
+    clearSelection();
   }
 
   return (
@@ -263,6 +374,39 @@ export default function ChannelsTab({
         </div>
       </div>
 
+      {selectedChannels.length > 0 && (
+        <div
+          className="section-card"
+          style={{
+            marginBottom: "16px",
+            padding: "14px 16px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ minWidth: "160px" }}>
+            <div className="muted small">Выбрано каналов</div>
+            <div style={{ fontWeight: 700, fontSize: "18px" }}>
+              {selectedChannels.length}
+            </div>
+          </div>
+
+          <button className="btn btn-primary" onClick={handleDuplicateSelected}>
+            Дублировать выбранные
+          </button>
+
+          <button className="btn" onClick={clearSelection}>
+            Снять выбор
+          </button>
+
+          <button className="btn btn-danger" onClick={handleDeleteSelected}>
+            Удалить выбранные
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",
@@ -271,6 +415,7 @@ export default function ChannelsTab({
         }}
       >
         {filteredChannels.map((channel) => {
+          const isSelected = selectedIds.has(channel.id);
           return (
             <div
               key={channel.id}
@@ -279,6 +424,8 @@ export default function ChannelsTab({
                 margin: 0,
                 padding: "16px",
                 borderRadius: "20px",
+                border: isSelected ? "2px solid #ef4444" : undefined,
+                boxShadow: isSelected ? "0 0 0 3px rgba(239, 68, 68, 0.08)" : undefined,
               }}
             >
               <div
@@ -290,6 +437,14 @@ export default function ChannelsTab({
                   marginBottom: "14px",
                 }}
               >
+                <div onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(event) => handleSelectChange(event, channel.id)}
+                    style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                  />
+                </div>
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -422,6 +577,17 @@ export default function ChannelsTab({
                   onClick={() => handleOpenEdit(channel)}
                 >
                   Редактировать
+                </button>
+
+                <button
+                  className="btn-small"
+                  onClick={() =>
+                    (typeof onBulkAddChannels === "function"
+                      ? onBulkAddChannels([buildDuplicateChannel(channel)])
+                      : onAddChannel(buildDuplicateChannel(channel)))
+                  }
+                >
+                  Дублировать
                 </button>
 
                 <button

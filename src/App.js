@@ -242,6 +242,19 @@ function AppInner() {
     deleteChannel(id);
     toast("Канал удалён");
   }
+  function handleBulkAddChannels(nextChannels) {
+    if (!Array.isArray(nextChannels) || !nextChannels.length) return;
+    pushSnapshot();
+    replaceChannels([...channels, ...nextChannels]);
+    toast("Добавлено " + nextChannels.length + " каналов");
+  }
+  function handleBulkDeleteChannels(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const idsSet = new Set(ids);
+    pushSnapshot();
+    replaceChannels(channels.filter((channel) => !idsSet.has(channel.id)));
+    toast("Удалено " + ids.length + " каналов");
+  }
   function handleSoftResetChannels() {
     const confirmed = window.confirm(
       "Очистить весь справочник каналов мягко? Запуски и требования сохранятся, но привязки к каналам будут сняты, а старые названия сохранятся как подсказки."
@@ -660,6 +673,8 @@ function AppInner() {
             <ChannelsTab
               channels={channels}
               onAddChannel={handleAddChannel}
+              onBulkAddChannels={handleBulkAddChannels}
+              onBulkDeleteChannels={handleBulkDeleteChannels}
               onUpdateChannel={handleUpdateChannel}
               onDeleteChannel={handleDeleteChannel}
             />
