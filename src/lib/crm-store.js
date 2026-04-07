@@ -31,11 +31,21 @@ export function calculateEndDate(startDate, duration) {
   if (!startDate) return "";
 
   const totalDays = Math.max(1, Number(duration) || 1);
-  const start = new Date(`${startDate}T00:00:00`);
+  const match = String(startDate)
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+
+  const [, yyyy, mm, dd] = match;
+  const start = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
   if (Number.isNaN(start.getTime())) return "";
 
   start.setDate(start.getDate() + totalDays - 1);
-  return start.toISOString().slice(0, 10);
+
+  const endYear = start.getFullYear();
+  const endMonth = String(start.getMonth() + 1).padStart(2, "0");
+  const endDay = String(start.getDate()).padStart(2, "0");
+  return `${endYear}-${endMonth}-${endDay}`;
 }
 
 export function formatDisplayDate(value) {

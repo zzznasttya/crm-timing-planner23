@@ -12,6 +12,7 @@ import AssistantPanel from "./components/crm/AssistantPanel";
 import ScheduleDraftModal from "./components/crm/ScheduleDraftModal";
 import { ToastProvider, useToast } from "./components/crm/Toast";
 import { useCRMStore } from "./lib/crm-store";
+import { calculateEndDate } from "./lib/crm-store";
 import {
   buildSchedule,
   buildLaunchIdentityKey,
@@ -135,6 +136,32 @@ function AppInner() {
       replaceLaunches(dedupedLaunches);
     }
   }, [launches, channels, replaceLaunches]);
+
+  useEffect(() => {
+    const normalizedLaunches = launches.map((launch) => {
+      const expectedEndDate =
+        launch?.startDate && launch?.duration
+          ? calculateEndDate(launch.startDate, launch.duration)
+          : launch?.endDate || "";
+
+      if (!expectedEndDate || expectedEndDate === launch.endDate) {
+        return launch;
+      }
+
+      return {
+        ...launch,
+        endDate: expectedEndDate,
+      };
+    });
+
+    const hasChanges = normalizedLaunches.some(
+      (launch, index) => launch !== launches[index]
+    );
+
+    if (hasChanges) {
+      replaceLaunches(normalizedLaunches);
+    }
+  }, [launches, replaceLaunches]);
 
   // ── Undo ──
   function pushSnapshot() {
