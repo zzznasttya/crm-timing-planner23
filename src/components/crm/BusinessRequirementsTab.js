@@ -12,6 +12,7 @@ import {
   createEmptyRequirement,
   formatDate,
   getClosestWeekStart,
+  getRequirementDateConstraints,
   getMonday,
   getWeekRange,
   normalizeFixedDateMode,
@@ -53,13 +54,21 @@ function getChannelNames(channelIds, channels, fallbackLabels = []) {
 
 function getFixedDateLabel(item) {
   if (item.hasFixedDates !== "yes") return "Нет";
-  if (item.fixedStartDate && item.fixedEndDate) {
-    return `${formatDisplayDate(item.fixedStartDate)} - ${formatDisplayDate(
-      item.fixedEndDate
-    )}`;
-  }
-  if (item.fixedStartDate) return formatDisplayDate(item.fixedStartDate);
-  return "Да";
+  const constraints = getRequirementDateConstraints(item);
+  if (!constraints.earliestStartDate) return "Да";
+
+  return [
+    `Старт: ${formatDisplayDate(constraints.earliestStartDate)}`,
+    constraints.latestStartDate &&
+    constraints.latestStartDate !== constraints.earliestStartDate
+      ? `— ${formatDisplayDate(constraints.latestStartDate)}`
+      : "",
+    constraints.latestEndDate
+      ? ` · до ${formatDisplayDate(constraints.latestEndDate)}`
+      : "",
+  ]
+    .join("")
+    .trim();
 }
 
 function buildExportRows(requirements, channels) {
@@ -74,8 +83,9 @@ function buildExportRows(requirements, channels) {
     База: item.audience || "",
     Приоритет: normalizePriority(item.priority),
     "Жесткая привязка к датам": item.hasFixedDates === "yes" ? "Да" : "Нет",
-    "Дата с": item.fixedStartDate || "",
-    "Дата до": item.fixedEndDate || "",
+    "Самая ранняя дата запуска": item.earliestStartDate || item.fixedStartDate || "",
+    "Самая поздняя дата запуска": item.latestStartDate || item.fixedStartDate || "",
+    "Самый поздний срок окончания": item.latestEndDate || item.fixedEndDate || "",
     Статус: item.status || "новое",
     "Ожидаемый результат": item.desiredResult || "",
     Комментарий: item.comment || "",
@@ -95,6 +105,7 @@ async function exportRequirementsToExcel(requirements, channels) {
     { wch: 28 },
     { wch: 10 },
     { wch: 22 },
+    { wch: 14 },
     { wch: 14 },
     { wch: 14 },
     { wch: 14 },
@@ -305,10 +316,48 @@ async function importRequirementsFromFile(file, channels) {
       audience: row["База"] || AUDIENCE_OPTIONS[0],
       priority: row["Приоритет"] || "3",
       hasFixedDates: fixedModeRaw,
-      fixedStartDate: normalizeImportedDate(row["Дата с"], XLSX) || "",
+      earliestStartDate:
+        normalizeImportedDate(
+          row["Самая ранняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) || "",
+      latestStartDate:
+        normalizeImportedDate(
+          row["Самая поздняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) ||
+        normalizeImportedDate(
+          row["Самая ранняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) ||
+        "",
+      latestEndDate:
+        normalizeImportedDate(
+          row["Самый поздний срок окончания"] || row["Дата до"],
+          XLSX
+        ) ||
+        normalizeImportedDate(
+          row["Самая поздняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) ||
+        normalizeImportedDate(
+          row["Самая ранняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) ||
+        "",
+      fixedStartDate: normalizeImportedDate(
+        row["Самая ранняя дата запуска"] || row["Дата с"],
+        XLSX
+      ) || "",
       fixedEndDate:
-        normalizeImportedDate(row["Дата до"], XLSX) ||
-        normalizeImportedDate(row["Дата с"], XLSX) ||
+        normalizeImportedDate(
+          row["Самый поздний срок окончания"] || row["Дата до"],
+          XLSX
+        ) ||
+        normalizeImportedDate(
+          row["Самая ранняя дата запуска"] || row["Дата с"],
+          XLSX
+        ) ||
         "",
       desiredResult: row["Ожидаемый результат"] || "",
       comment: row["Комментарий"] || "",
@@ -328,6 +377,34 @@ function RequirementInlineForm({
   const selectedWeekStart = getClosestWeekStart(value.weekStart);
   const selectedWeekRange = getWeekRange(selectedWeekStart);
 
+  function syncWeekRangeToHardDates(next) {
+    if (next.hasFixedDates !== "yes" || !next.earliestStartDate) {
+      return next;
+    }
+
+    const startRange = getWeekRange(next.earliestStartDate);
+    const endRange = getWeekRange(
+      next.latestEndDate || next.latestStartDate || next.earliestStartDate
+    );
+
+    return {
+      ...next,
+      weekStart: startRange.weekStart,
+      weekEnd: endRange.weekEnd,
+    };
+  }
+
+  function shiftSelectedWeek(weeksDelta) {
+    const baseDate = new Date(`${selectedWeekStart}T00:00:00`);
+    if (Number.isNaN(baseDate.getTime())) {
+      return formatDate(getMonday());
+    }
+
+    const shiftedDate = new Date(baseDate);
+    shiftedDate.setDate(shiftedDate.getDate() + weeksDelta * 7);
+    return getWeekRange(formatDate(shiftedDate)).weekStart;
+  }
+
   function upd(field, val) {
     const next = { ...value, [field]: val };
 
@@ -336,6 +413,18 @@ function RequirementInlineForm({
       const range = getWeekRange(ws);
       next.weekStart = range.weekStart;
       next.weekEnd = range.weekEnd;
+      if (
+        next.hasFixedDates === "yes" &&
+        !next.earliestStartDate &&
+        !next.latestStartDate &&
+        !next.latestEndDate
+      ) {
+        next.earliestStartDate = range.weekStart;
+        next.latestStartDate = range.weekStart;
+        next.latestEndDate = range.weekEnd;
+        next.fixedStartDate = range.weekStart;
+        next.fixedEndDate = range.weekEnd;
+      }
     }
 
     if (field === "priority") {
@@ -348,21 +437,69 @@ function RequirementInlineForm({
 
     if (field === "hasFixedDates") {
       next.hasFixedDates = normalizeFixedDateMode(val);
-      if (next.hasFixedDates !== "yes") {
+      if (next.hasFixedDates === "yes") {
+        next.earliestStartDate =
+          next.earliestStartDate || selectedWeekRange.weekStart;
+        next.latestStartDate =
+          next.latestStartDate || next.earliestStartDate || selectedWeekRange.weekStart;
+        next.latestEndDate =
+          next.latestEndDate || next.latestStartDate || selectedWeekRange.weekEnd;
+        if (next.latestStartDate < next.earliestStartDate) {
+          next.latestStartDate = next.earliestStartDate;
+        }
+        if (next.latestEndDate < next.latestStartDate) {
+          next.latestEndDate = next.latestStartDate;
+        }
+        next.fixedStartDate = next.earliestStartDate;
+        next.fixedEndDate = next.latestEndDate;
+        onChange(syncWeekRangeToHardDates(next));
+        return;
+      } else {
+        next.earliestStartDate = "";
+        next.latestStartDate = "";
+        next.latestEndDate = "";
         next.fixedStartDate = "";
         next.fixedEndDate = "";
       }
     }
 
-    if (field === "fixedStartDate") {
-      next.fixedStartDate = val;
-      if (!next.fixedEndDate) {
-        next.fixedEndDate = val;
+    if (field === "earliestStartDate") {
+      next.earliestStartDate = val;
+      if (!next.latestStartDate || next.latestStartDate < val) {
+        next.latestStartDate = val;
       }
+      if (!next.latestEndDate || next.latestEndDate < next.latestStartDate) {
+        next.latestEndDate = next.latestStartDate;
+      }
+      next.fixedStartDate = next.earliestStartDate;
+      next.fixedEndDate = next.latestEndDate;
+      onChange(syncWeekRangeToHardDates(next));
+      return;
     }
 
-    if (field === "fixedEndDate") {
-      next.fixedEndDate = val;
+    if (field === "latestStartDate") {
+      next.latestStartDate =
+        next.earliestStartDate && val && val < next.earliestStartDate
+          ? next.earliestStartDate
+          : val;
+      if (!next.latestEndDate || next.latestEndDate < next.latestStartDate) {
+        next.latestEndDate = next.latestStartDate;
+      }
+      next.fixedStartDate = next.earliestStartDate;
+      next.fixedEndDate = next.latestEndDate;
+      onChange(syncWeekRangeToHardDates(next));
+      return;
+    }
+
+    if (field === "latestEndDate") {
+      next.latestEndDate =
+        next.latestStartDate && val && val < next.latestStartDate
+          ? next.latestStartDate
+          : val;
+      next.fixedStartDate = next.earliestStartDate;
+      next.fixedEndDate = next.latestEndDate;
+      onChange(syncWeekRangeToHardDates(next));
+      return;
     }
 
     onChange(next);
@@ -384,18 +521,7 @@ function RequirementInlineForm({
             <button
               type="button"
               className="btn-small"
-              onClick={() =>
-                upd(
-                  "weekStart",
-                  formatDate(
-                    new Date(
-                      new Date(`${selectedWeekStart}T00:00:00`).setDate(
-                        new Date(`${selectedWeekStart}T00:00:00`).getDate() - 7
-                      )
-                    )
-                  )
-                )
-              }
+              onClick={() => upd("weekStart", shiftSelectedWeek(-1))}
             >
               ←
             </button>
@@ -404,23 +530,12 @@ function RequirementInlineForm({
               className="btn-small"
               onClick={() => upd("weekStart", formatDate(getMonday()))}
             >
-              Сегодня
+              Эта неделя
             </button>
             <button
               type="button"
               className="btn-small"
-              onClick={() =>
-                upd(
-                  "weekStart",
-                  formatDate(
-                    new Date(
-                      new Date(`${selectedWeekStart}T00:00:00`).setDate(
-                        new Date(`${selectedWeekStart}T00:00:00`).getDate() + 7
-                      )
-                    )
-                  )
-                )
-              }
+              onClick={() => upd("weekStart", shiftSelectedWeek(1))}
             >
               →
             </button>
@@ -431,6 +546,9 @@ function RequirementInlineForm({
             onChange={(e) => upd("weekStart", e.target.value)}
           />
           <div style={{ fontSize: "12px", color: "#71717a", marginTop: "6px" }}>
+            Начало недели (пн)
+          </div>
+          <div style={{ fontSize: "12px", color: "#71717a", marginTop: "4px" }}>
             {formatDisplayDate(selectedWeekRange.weekStart)} —{" "}
             {formatDisplayDate(selectedWeekRange.weekEnd)}
           </div>
@@ -495,21 +613,42 @@ function RequirementInlineForm({
         {value.hasFixedDates === "yes" && (
           <>
             <div>
-              <label>Дата с</label>
+              <label>Самая ранняя дата запуска</label>
               <input
                 type="date"
-                value={value.fixedStartDate || ""}
-                onChange={(e) => upd("fixedStartDate", e.target.value)}
+                value={value.earliestStartDate || ""}
+                onChange={(e) => upd("earliestStartDate", e.target.value)}
               />
             </div>
 
             <div>
-              <label>Дата до</label>
+              <label>Самая поздняя дата запуска</label>
               <input
                 type="date"
-                value={value.fixedEndDate || ""}
-                onChange={(e) => upd("fixedEndDate", e.target.value)}
+                value={value.latestStartDate || ""}
+                onChange={(e) => upd("latestStartDate", e.target.value)}
               />
+            </div>
+
+            <div>
+              <label>Самый поздний срок окончания</label>
+              <input
+                type="date"
+                value={value.latestEndDate || ""}
+                onChange={(e) => upd("latestEndDate", e.target.value)}
+              />
+            </div>
+
+            <div
+              style={{
+                gridColumn: "span 2",
+                fontSize: "12px",
+                color: "#71717a",
+              }}
+            >
+              Планировщик различает три ограничения: когда запуск можно начать
+              впервые, когда его ещё можно начать в последний раз и до какой даты
+              он максимум может висеть.
             </div>
           </>
         )}
@@ -784,13 +923,14 @@ export default function BusinessRequirementsTab({
     const periodEndString = formatDate(period.end);
 
     const filteredByPeriod = normalizedRequirements.filter((item) => {
+      const constraints = getRequirementDateConstraints(item);
       const itemStart =
-        item.hasFixedDates === "yes" && item.fixedStartDate
-          ? item.fixedStartDate
+        item.hasFixedDates === "yes" && constraints.earliestStartDate
+          ? constraints.earliestStartDate
           : item.weekStart;
       const itemEnd =
-        item.hasFixedDates === "yes" && (item.fixedEndDate || item.fixedStartDate)
-          ? item.fixedEndDate || item.fixedStartDate
+        item.hasFixedDates === "yes" && constraints.latestEndDate
+          ? constraints.latestEndDate
           : item.weekEnd;
 
       return (

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getChannelName,
   calculateEndDate,
+  calculateLatestAllowedStartDate,
   detectConflicts,
   getChannelDisplayName,
   formatDisplayDate,
@@ -15,53 +16,64 @@ import WeekRangeNavigator, {
 const PLATFORMS = ["АМ", "АО", "АМ+АО"];
 const PRIORITIES = ["0", "1", "2", "3", "4", "5"];
 const CAMPAIGN_TYPES = ["CRM акция", "игровая механика", "пилот / тест"];
+const REGISTRY_STATUS_OPTIONS = ["нет", "передан"];
 const GAME_PILL_STYLES = {
   "Матрёшки": {
-    background: "#ffe3e3",
-    color: "#cc0000",
-    borderColor: "#ffc3c3",
+    background: "#ffe2e2",
+    color: "#bf1d1d",
+    borderColor: "#ffb8b8",
   },
   Суперигра: {
-    background: "#17181a",
-    color: "#ffffff",
-    borderColor: "#17181a",
+    background: "#e2efff",
+    color: "#1459c7",
+    borderColor: "#bdd8ff",
   },
   КНБ: {
-    background: "#f4f4f4",
-    color: "#17181a",
-    borderColor: "#dbdbdb",
+    background: "#fff1d7",
+    color: "#a15a00",
+    borderColor: "#ffd89c",
   },
   Алхимия: {
-    background: "#fff0f0",
-    color: "#c40000",
-    borderColor: "#ffd2d2",
+    background: "#f1e4ff",
+    color: "#7b32c9",
+    borderColor: "#dcc0ff",
   },
   "Пуш и куш": {
-    background: "#17181a",
-    color: "#ffffff",
-    borderColor: "#17181a",
+    background: "#ddf7e8",
+    color: "#117a49",
+    borderColor: "#b7ebcf",
   },
 };
 const CHANNEL_PILL_STYLES = [
   {
-    background: "#ffe5e5",
-    color: "#cc0000",
-    borderColor: "#ffc8c8",
+    background: "#ffe3e3",
+    color: "#bf1d1d",
+    borderColor: "#ffbcbc",
   },
   {
-    background: "#17181a",
-    color: "#ffffff",
-    borderColor: "#17181a",
+    background: "#e4efff",
+    color: "#1558c0",
+    borderColor: "#bdd8ff",
   },
   {
-    background: "#f7f7f7",
-    color: "#2e2f33",
-    borderColor: "#dddddd",
+    background: "#fff3dd",
+    color: "#9a5700",
+    borderColor: "#ffd8a3",
   },
   {
-    background: "#fff0f0",
-    color: "#d10000",
-    borderColor: "#ffd3d3",
+    background: "#efe5ff",
+    color: "#7938bf",
+    borderColor: "#dcc4ff",
+  },
+  {
+    background: "#ddf7e8",
+    color: "#117a49",
+    borderColor: "#b8ebd0",
+  },
+  {
+    background: "#ececec",
+    color: "#2f3135",
+    borderColor: "#d1d5db",
   },
 ];
 
@@ -72,6 +84,12 @@ function normalizeLaunchPriority(value) {
   if (normalized === "Средний") return "3";
   if (normalized === "Низкий") return "5";
   return "3";
+}
+
+function normalizeRegistryStatus(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "передан") return "передан";
+  return "нет";
 }
 
 function getImportedValue(row, keys) {
@@ -250,10 +268,14 @@ function buildExportRows(launches, channels) {
     Старт: l.startDate || "",
     Длительность: l.duration || "",
     Конец: l.endDate || "",
+    "Ранняя дата": l.earliestStartDate || "",
+    "Поздняя дата": l.latestStartDate || "",
+    "Поздний срок окончания": l.latestEndDate || "",
     Платформа: l.platform || "",
     База: l.audience || "",
     Приоритет: l.priority || "",
     Статус: l.planningStatus || "",
+    Реестр: normalizeRegistryStatus(l.registryStatus),
     "База коммуникаций": l.sentBaseCount || "",
     Менеджер: l.manager || "",
     Комментарий: l.comment || "",
@@ -329,12 +351,22 @@ async function importLaunchesFromFile(file, channels) {
         latestStartDate:
           normalizeImportedDate(getImportedValue(r, ["Поздняя дата"]), XLSX) ||
           startDate,
+        latestEndDate:
+          normalizeImportedDate(
+            getImportedValue(r, ["Поздний срок окончания", "Поздняя дата окончания"]),
+            XLSX
+          ) ||
+          explicitEndDate ||
+          calculateEndDate(startDate, duration),
         platform: String(getImportedValue(r, ["Платформа"]) || "АМ+АО"),
         audience: String(getImportedValue(r, ["База", "Отбор"]) || ""),
         priority: normalizeLaunchPriority(
           getImportedValue(r, ["Приоритет"]) || "3"
         ),
         planningStatus: String(getImportedValue(r, ["Статус"]) || "бэклог"),
+        registryStatus: normalizeRegistryStatus(
+          getImportedValue(r, ["Реестр", "Статус реестра"]) || "нет"
+        ),
         sentBaseCount: Number(
           getImportedValue(r, ["База коммуникаций", "База комм", "БКП база"])
         ) || "",
@@ -394,23 +426,23 @@ function getStatusStyle(status) {
   const normalized = normalizeStatus(status);
 
   if (normalized === "бэклог") {
-    return { background: "#f3c7c2", color: "#b42318" };
+    return { background: "#ffe2e2", color: "#bf1d1d" };
   }
 
   if (normalized === "в работе") {
-    return { background: "#f2d68f", color: "#5f4313" };
+    return { background: "#fff1d7", color: "#8a5200" };
   }
 
   if (normalized === "запуск") {
-    return { background: "#f3c29f", color: "#8a4b17" };
+    return { background: "#e2efff", color: "#1459c7" };
   }
 
   if (normalized === "запущено") {
-    return { background: "#c7dfb2", color: "#0f7a4f" };
+    return { background: "#dcf7e8", color: "#127347" };
   }
 
   if (normalized === "приостановлено") {
-    return { background: "#c40000", color: "#ffffff" };
+    return { background: "#2a2a2a", color: "#ffffff" };
   }
 
   return { background: "#eef2f7", color: "#111827" };
@@ -490,6 +522,60 @@ function renderChannelPill(channelId, channels, fallbackLabel = "") {
   return renderEntityPill(label, style);
 }
 
+function getAudiencePillStyle(audience = "") {
+  const token = String(audience).trim().toLowerCase();
+
+  if (!token) {
+    return {
+      background: "#f4f4f5",
+      color: "#52525b",
+      borderColor: "#e4e4e7",
+    };
+  }
+
+  if (token.includes("побед")) {
+    return {
+      background: "#fff2cc",
+      color: "#946200",
+      borderColor: "#ffd978",
+    };
+  }
+
+  if (token.includes("остатк")) {
+    return {
+      background: "#e4efff",
+      color: "#1459c7",
+      borderColor: "#bed7ff",
+    };
+  }
+
+  if (token.includes("план")) {
+    return {
+      background: "#ffe2e2",
+      color: "#bf1d1d",
+      borderColor: "#ffb8b8",
+    };
+  }
+
+  if (token.includes("акб")) {
+    return {
+      background: "#ddf7e8",
+      color: "#117a49",
+      borderColor: "#b7ebcf",
+    };
+  }
+
+  return {
+    background: "#efe5ff",
+    color: "#7a38bf",
+    borderColor: "#dcc3ff",
+  };
+}
+
+function renderAudiencePill(audience) {
+  return renderEntityPill(audience || "—", getAudiencePillStyle(audience));
+}
+
 function makeNewLaunch(channels) {
   const channel = channels[0];
 
@@ -512,6 +598,7 @@ function makeNewLaunch(channels) {
     audience: "",
     priority: "3",
     planningStatus: "бэклог",
+    registryStatus: "нет",
     sentBaseCount: "",
     comment: "",
     issues: [],
@@ -519,6 +606,7 @@ function makeNewLaunch(channels) {
     campaignType: "CRM акция",
     earliestStartDate: startDate,
     latestStartDate: startDate,
+    latestEndDate: calculateEndDate(startDate, duration),
     manager: "",
   };
 }
@@ -534,7 +622,7 @@ function formatWeekdayShort(dateString) {
   return new Intl.DateTimeFormat("ru-RU", { weekday: "short" })
     .format(date)
     .replace(".", "")
-    .toLowerCase();
+    .toUpperCase();
 }
 
 function getWeekKey(dateString) {
@@ -566,6 +654,62 @@ function shiftDateByDays(dateString, days) {
   if (Number.isNaN(date.getTime())) return dateString;
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function syncLaunchDateBounds(launch) {
+  const next = { ...launch };
+  const safeStartDate = next.startDate || "";
+  const safeDuration = Math.max(1, Number(next.duration) || 1);
+  const safeEndDate = calculateEndDate(safeStartDate, safeDuration);
+
+  next.duration = safeDuration;
+  next.endDate = safeEndDate;
+  next.earliestStartDate = next.earliestStartDate || safeStartDate;
+  next.latestStartDate = next.latestStartDate || safeStartDate;
+  next.latestEndDate = next.latestEndDate || safeEndDate;
+
+  if (
+    next.earliestStartDate &&
+    next.latestStartDate &&
+    next.latestStartDate < next.earliestStartDate
+  ) {
+    next.latestStartDate = next.earliestStartDate;
+  }
+
+  const latestAllowedByEnd = calculateLatestAllowedStartDate(
+    next.latestEndDate,
+    safeDuration
+  );
+
+  if (
+    latestAllowedByEnd &&
+    next.latestStartDate &&
+    next.latestStartDate > latestAllowedByEnd
+  ) {
+    next.latestStartDate = latestAllowedByEnd;
+  }
+
+  if (next.startDate && next.earliestStartDate && next.startDate < next.earliestStartDate) {
+    next.earliestStartDate = next.startDate;
+  }
+
+  if (next.startDate && next.latestStartDate && next.startDate > next.latestStartDate) {
+    next.latestStartDate = next.startDate;
+  }
+
+  if (next.endDate && next.latestEndDate && next.endDate > next.latestEndDate) {
+    next.latestEndDate = next.endDate;
+  }
+
+  if (
+    next.latestStartDate &&
+    next.latestEndDate &&
+    next.latestEndDate < next.latestStartDate
+  ) {
+    next.latestEndDate = next.latestStartDate;
+  }
+
+  return next;
 }
 
 function getWeekStartFromDateString(dateString) {
@@ -626,20 +770,14 @@ function LaunchForm({ value, channels, onChange }) {
       const channel = channels.find((c) => c.id === val);
       if (channel) {
         next.duration = channel.duration;
-        next.endDate = calculateEndDate(next.startDate, channel.duration);
       }
-    }
-
-    if (field === "startDate") {
-      next.endDate = calculateEndDate(val, next.duration);
     }
 
     if (field === "duration") {
       next.duration = Number(val);
-      next.endDate = calculateEndDate(next.startDate, Number(val));
     }
 
-    onChange(next);
+    onChange(syncLaunchDateBounds(next));
   }
 
   return (
@@ -763,6 +901,20 @@ function LaunchForm({ value, channels, onChange }) {
       )}
 
       <div>
+        <label>Реестр</label>
+        <select
+          value={normalizeRegistryStatus(value.registryStatus)}
+          onChange={(e) => update("registryStatus", e.target.value)}
+        >
+          {REGISTRY_STATUS_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
         <label>Тип кампании</label>
         <select
           value={value.campaignType}
@@ -797,6 +949,15 @@ function LaunchForm({ value, channels, onChange }) {
           type="date"
           value={value.latestStartDate || value.startDate}
           onChange={(e) => update("latestStartDate", e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label>Поздний срок окончания</label>
+        <input
+          type="date"
+          value={value.latestEndDate || value.endDate}
+          onChange={(e) => update("latestEndDate", e.target.value)}
         />
       </div>
 
@@ -1038,16 +1199,12 @@ function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
       const ch = channels.find((c) => c.id === val);
       if (ch) {
         next.duration = ch.duration;
-        next.endDate = calculateEndDate(next.startDate, ch.duration);
       }
     }
-    if (field === "startDate")
-      next.endDate = calculateEndDate(val, next.duration);
     if (field === "duration") {
       next.duration = Number(val);
-      next.endDate = calculateEndDate(next.startDate, Number(val));
     }
-    onChange(next);
+    onChange(syncLaunchDateBounds(next));
   }
 
   return (
@@ -1171,6 +1328,19 @@ function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
           </div>
         )}
         <div>
+          <label>Реестр</label>
+          <select
+            value={normalizeRegistryStatus(value.registryStatus)}
+            onChange={(e) => upd("registryStatus", e.target.value)}
+          >
+            {REGISTRY_STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label>Тип</label>
           <select
             value={value.campaignType}
@@ -1180,6 +1350,30 @@ function InlineForm({ value, channels, onChange, onSave, onCancel, isNew }) {
               <option key={c}>{c}</option>
             ))}
           </select>
+        </div>
+        <div>
+          <label>Ранняя дата</label>
+          <input
+            type="date"
+            value={value.earliestStartDate || value.startDate || ""}
+            onChange={(e) => upd("earliestStartDate", e.target.value)}
+          />
+        </div>
+        <div>
+          <label>Поздняя дата</label>
+          <input
+            type="date"
+            value={value.latestStartDate || value.startDate || ""}
+            onChange={(e) => upd("latestStartDate", e.target.value)}
+          />
+        </div>
+        <div>
+          <label>Срок окончания</label>
+          <input
+            type="date"
+            value={value.latestEndDate || value.endDate || ""}
+            onChange={(e) => upd("latestEndDate", e.target.value)}
+          />
         </div>
         <div style={{ gridColumn: "span 2" }}>
           <label>Комментарий</label>
@@ -1371,33 +1565,33 @@ export default function LaunchesTab({
   }
 
   function buildNormalizedLaunch(nextLaunch) {
-    const next = {
+    const next = syncLaunchDateBounds({
       ...nextLaunch,
       game: nextLaunch.game || GAMES[0],
       planningStatus: normalizeStatus(nextLaunch.planningStatus),
       platform: nextLaunch.platform || "АМ+АО",
       priority: normalizeLaunchPriority(nextLaunch.priority),
+      registryStatus: normalizeRegistryStatus(nextLaunch.registryStatus),
       sentBaseCount:
         nextLaunch.sentBaseCount === "" || nextLaunch.sentBaseCount == null
           ? ""
           : Math.max(0, Number(nextLaunch.sentBaseCount) || 0),
-    };
+    });
 
     const channel = channels.find((item) => item.id === next.channelId);
     if (channel && (!next.duration || Number(next.duration) <= 0)) {
       next.duration = channel.duration || 5;
     }
 
-    next.duration = Math.max(1, Number(next.duration) || 1);
-    next.endDate = calculateEndDate(next.startDate, next.duration);
+    const syncedNext = syncLaunchDateBounds(next);
 
     const nextAllLaunches = launches.map((launch) =>
-      launch.id === next.id ? next : launch
+      launch.id === syncedNext.id ? syncedNext : launch
     );
-    const issues = detectConflicts(next, nextAllLaunches, channels);
+    const issues = detectConflicts(syncedNext, nextAllLaunches, channels);
 
     return {
-      ...next,
+      ...syncedNext,
       issues,
       conflictStatus: issues.length ? "conflict" : "ok",
     };
@@ -1589,6 +1783,26 @@ export default function LaunchesTab({
       );
     }
 
+    if (field === "registryStatus") {
+      return (
+        <select
+          {...commonProps}
+          value={normalizeRegistryStatus(editingCellValue || launch.registryStatus)}
+          onChange={(e) => {
+            setEditingCellValue(e.target.value);
+            saveCellEdit(launch, field, e.target.value);
+          }}
+          onBlur={cancelCellEdit}
+        >
+          {REGISTRY_STATUS_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
     return null;
   }
 
@@ -1664,12 +1878,10 @@ export default function LaunchesTab({
         if (nextChannel?.duration) {
           next.duration = nextChannel.duration;
         }
-        next.endDate = calculateEndDate(next.startDate, next.duration);
       }
 
       if (hasShift) {
         next.startDate = shiftDateByDays(next.startDate, shiftDays);
-        next.endDate = calculateEndDate(next.startDate, next.duration);
         next.earliestStartDate = shiftDateByDays(
           next.earliestStartDate || launch.earliestStartDate,
           shiftDays
@@ -1678,9 +1890,13 @@ export default function LaunchesTab({
           next.latestStartDate || launch.latestStartDate,
           shiftDays
         );
+        next.latestEndDate = shiftDateByDays(
+          next.latestEndDate || launch.latestEndDate || launch.endDate,
+          shiftDays
+        );
       }
 
-      return next;
+      return syncLaunchDateBounds(next);
     });
 
     const draftById = new Map(draftUpdates.map((launch) => [launch.id, launch]));
@@ -1983,6 +2199,7 @@ export default function LaunchesTab({
                   <th>База</th>
                   <th>Приоритет</th>
                   <th>Статус</th>
+                  <th>Реестр</th>
                   <th>База комм.</th>
                   <th>Риск</th>
                 </tr>
@@ -1993,19 +2210,19 @@ export default function LaunchesTab({
                 {editingId === "new" && editingData && (
                   <tr style={{ background: "#f8faff" }}>
                     <td />
-                    <td colSpan={12}>
+                    <td colSpan={13}>
                       <InlineForm
                         value={editingData}
                         channels={channels}
                         onChange={setEditingData}
                         onSave={() => {
-                          const newLaunch = {
+                          const newLaunch = buildNormalizedLaunch({
                             ...editingData,
                             game: editingData.game || GAMES[0],
                             planningStatus: normalizeStatus(
                               editingData.planningStatus
                             ),
-                          };
+                          });
                           onAddLaunch(newLaunch);
                           const nextPeriodStart = getWeekStartFromDateString(
                             newLaunch.startDate
@@ -2029,16 +2246,26 @@ export default function LaunchesTab({
                 {filtered.map((launch, index) => {
                   const isEditing = editingId === launch.id;
                   const previousLaunch = filtered[index - 1];
+                  const startsNewDay =
+                    !previousLaunch ||
+                    String(previousLaunch.startDate || "") !==
+                      String(launch.startDate || "");
                   const startsNewWeek =
                     !previousLaunch ||
                     getWeekKey(previousLaunch.startDate) !== getWeekKey(launch.startDate);
+                  const rowClassName = [
+                    startsNewDay ? "launches-day-separator" : "",
+                    startsNewWeek ? "launches-week-separator" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
                   const risk = getLaunchRiskSummary(launch);
                   return (
                     <React.Fragment key={launch.id}>
                       {isEditing ? (
                         <tr
                           style={{ background: "#f8faff" }}
-                          className={startsNewWeek ? "launches-week-separator" : ""}
+                          className={rowClassName}
                         >
                           <td>
                             <input
@@ -2050,19 +2277,19 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
-                          <td colSpan={12}>
+                          <td colSpan={13}>
                             <InlineForm
                               value={editingData}
                               channels={channels}
                               onChange={setEditingData}
                               onSave={() => {
-                                const updatedLaunch = {
+                                const updatedLaunch = buildNormalizedLaunch({
                                   ...editingData,
                                   game: editingData.game || GAMES[0],
                                   planningStatus: normalizeStatus(
                                     editingData.planningStatus
                                   ),
-                                };
+                                });
                                 onUpdateLaunch(updatedLaunch);
                                 const nextPeriodStart = getWeekStartFromDateString(
                                   updatedLaunch.startDate
@@ -2082,7 +2309,7 @@ export default function LaunchesTab({
                         </tr>
                       ) : (
                         <tr
-                          className={startsNewWeek ? "launches-week-separator" : ""}
+                          className={rowClassName}
                           style={{ cursor: "pointer" }}
                           onDoubleClick={() => {
                             setEditingId(launch.id);
@@ -2105,7 +2332,7 @@ export default function LaunchesTab({
                             />
                           </td>
                           <td>
-                            <div className="launch-day-chip">
+                            <div className="launch-day-chip" title={formatRuDate(launch.startDate)}>
                               {formatWeekdayShort(launch.startDate)}
                             </div>
                           </td>
@@ -2130,12 +2357,6 @@ export default function LaunchesTab({
                               <div className="launch-date-main">
                                 {formatRuDate(launch.startDate)}
                               </div>
-                              <div className="launch-date-sub">
-                                {getWeekKey(launch.startDate) ===
-                                getWeekKey(launch.endDate)
-                                  ? `неделя ${formatRuDate(getWeekKey(launch.startDate))}`
-                                  : "переход недели"}
-                              </div>
                             </div>
                           )}
                           {renderEditableCell(
@@ -2154,7 +2375,7 @@ export default function LaunchesTab({
                           {renderEditableCell(
                             launch,
                             "audience",
-                            launch.audience || "—"
+                            renderAudiencePill(launch.audience)
                           )}
                           {renderEditableCell(
                             launch,
@@ -2193,6 +2414,13 @@ export default function LaunchesTab({
                               </select>
                             </div>
                           </td>
+                          {renderEditableCell(
+                            launch,
+                            "registryStatus",
+                            <span className="badge">
+                              {normalizeRegistryStatus(launch.registryStatus)}
+                            </span>
+                          )}
                           {normalizeStatus(launch.planningStatus) === "запущено"
                             ? renderEditableCell(
                                 launch,

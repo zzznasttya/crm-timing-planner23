@@ -40,7 +40,7 @@ export default function WeekRangeNavigator({
           className="btn"
           onClick={() => onPeriodStartChange(getCurrentWeekStart())}
         >
-          Сегодня
+          Эта неделя
         </button>
         <button
           className="btn"

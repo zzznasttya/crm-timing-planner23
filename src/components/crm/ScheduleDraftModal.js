@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import {
   calculateEndDate,
+  calculateLatestAllowedStartDate,
   detectConflicts,
   formatDisplayDate,
   getChannelName,
@@ -43,6 +44,7 @@ function hasLaunchChanged(original, current) {
     "startDate",
     "endDate",
     "duration",
+    "latestEndDate",
     "audience",
     "priority",
     "comment",
@@ -122,10 +124,18 @@ function normalizeDateOrNull(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function clampStartDateToWindow(startDate, windowStart, windowEnd) {
+function clampStartDateToWindow(
+  startDate,
+  windowStart,
+  windowEnd,
+  latestEndDate,
+  duration
+) {
   const parsedStart = normalizeDateOrNull(startDate);
   const parsedWindowStart = normalizeDateOrNull(windowStart);
   const parsedWindowEnd = normalizeDateOrNull(windowEnd);
+  const latestAllowedStart = calculateLatestAllowedStartDate(latestEndDate, duration);
+  const parsedLatestAllowedStart = normalizeDateOrNull(latestAllowedStart);
 
   if (!parsedStart) return startDate;
   if (parsedWindowStart && parsedStart < parsedWindowStart) {
@@ -133,6 +143,9 @@ function clampStartDateToWindow(startDate, windowStart, windowEnd) {
   }
   if (parsedWindowEnd && parsedStart > parsedWindowEnd) {
     return format(parsedWindowEnd, "yyyy-MM-dd");
+  }
+  if (parsedLatestAllowedStart && parsedStart > parsedLatestAllowedStart) {
+    return format(parsedLatestAllowedStart, "yyyy-MM-dd");
   }
   return format(parsedStart, "yyyy-MM-dd");
 }
@@ -275,6 +288,12 @@ export default function ScheduleDraftModal({
         if ("startDate" in patch || "duration" in patch) {
           next.duration = Math.max(1, Number(next.duration) || 1);
           next.endDate = calculateEndDate(next.startDate, next.duration);
+          if (!next.latestEndDate || next.latestEndDate < next.endDate) {
+            next.latestEndDate = next.endDate;
+          }
+        }
+        if ("latestEndDate" in patch && next.latestEndDate < next.endDate) {
+          next.latestEndDate = next.endDate;
         }
         return next;
       });
@@ -297,7 +316,9 @@ export default function ScheduleDraftModal({
     const clampedStart = clampStartDateToWindow(
       nextStart,
       planning.windowStart || launch.earliestStartDate,
-      planning.windowEnd || launch.latestStartDate
+      planning.windowEnd || launch.latestStartDate,
+      planning.latestEndDate || launch.latestEndDate || launch.endDate,
+      launch.duration
     );
     if (clampedStart !== launch.startDate) {
       updateLaunch(id, { startDate: clampedStart });
@@ -438,6 +459,14 @@ export default function ScheduleDraftModal({
                 <div>
                   {formatDisplayDate(planning.windowStart || launch.earliestStartDate)} —{" "}
                   {formatDisplayDate(planning.windowEnd || launch.latestStartDate)}
+                </div>
+              </div>
+              <div>
+                <div className="muted small">Срок окончания</div>
+                <div>
+                  {formatDisplayDate(
+                    planning.latestEndDate || launch.latestEndDate || launch.endDate
+                  )}
                 </div>
               </div>
               <div>
@@ -583,6 +612,16 @@ export default function ScheduleDraftModal({
                   <div>
                     <label>Конец</label>
                     <input value={formatDisplayDate(launch.endDate)} disabled />
+                  </div>
+                  <div>
+                    <label>Срок окончания</label>
+                    <input
+                      type="date"
+                      value={launch.latestEndDate || launch.endDate || ""}
+                      onChange={(e) =>
+                        updateLaunch(launch.id, { latestEndDate: e.target.value })
+                      }
+                    />
                   </div>
                   <div>
                     <label>Аудитория</label>

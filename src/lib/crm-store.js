@@ -3,6 +3,7 @@ import { normalizeAudience } from "./requirements-domain";
 export { GAMES } from "./game-catalog";
 
 const STORAGE_KEY = "crm-store-v1";
+const IMPROVEMENT_IDEAS_STORAGE_KEY = "crm-improvement-ideas-v1";
 const DEFAULT_PREFERENCES = {
   autoActivateHighConfidenceRules: false,
   confidenceThreshold: 0.8,
@@ -27,6 +28,29 @@ function save(state) {
   } catch {}
 }
 
+function loadImprovementIdeas(persisted = {}) {
+  try {
+    const dedicatedRaw = localStorage.getItem(IMPROVEMENT_IDEAS_STORAGE_KEY);
+    if (dedicatedRaw) {
+      const parsed = JSON.parse(dedicatedRaw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+
+  return Array.isArray(persisted.improvementIdeas)
+    ? persisted.improvementIdeas
+    : [];
+}
+
+function saveImprovementIdeas(ideas) {
+  try {
+    localStorage.setItem(
+      IMPROVEMENT_IDEAS_STORAGE_KEY,
+      JSON.stringify(Array.isArray(ideas) ? ideas : [])
+    );
+  } catch {}
+}
+
 export function calculateEndDate(startDate, duration) {
   if (!startDate) return "";
 
@@ -46,6 +70,27 @@ export function calculateEndDate(startDate, duration) {
   const endMonth = String(start.getMonth() + 1).padStart(2, "0");
   const endDay = String(start.getDate()).padStart(2, "0");
   return `${endYear}-${endMonth}-${endDay}`;
+}
+
+export function calculateLatestAllowedStartDate(latestEndDate, duration) {
+  if (!latestEndDate) return "";
+
+  const totalDays = Math.max(1, Number(duration) || 1);
+  const match = String(latestEndDate)
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+
+  const [, yyyy, mm, dd] = match;
+  const latestEnd = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  if (Number.isNaN(latestEnd.getTime())) return "";
+
+  latestEnd.setDate(latestEnd.getDate() - (totalDays - 1));
+
+  const startYear = latestEnd.getFullYear();
+  const startMonth = String(latestEnd.getMonth() + 1).padStart(2, "0");
+  const startDay = String(latestEnd.getDate()).padStart(2, "0");
+  return `${startYear}-${startMonth}-${startDay}`;
 }
 
 export function formatDisplayDate(value) {
@@ -156,6 +201,9 @@ export function useCRMStore() {
   const [requirements, setRequirements] = useState(
     persisted.requirements || []
   );
+  const [improvementIdeas, setImprovementIdeas] = useState(
+    loadImprovementIdeas(persisted)
+  );
   const [messages, setMessages] = useState(persisted.messages || []);
   const [rules, setRules] = useState(
     Array.isArray(persisted.rules) ? persisted.rules : []
@@ -171,11 +219,25 @@ export function useCRMStore() {
       channels,
       performanceReports,
       requirements,
+      improvementIdeas,
       messages,
       rules,
       preferences,
     });
-  }, [launches, channels, performanceReports, requirements, messages, rules, preferences]);
+  }, [
+    launches,
+    channels,
+    performanceReports,
+    requirements,
+    improvementIdeas,
+    messages,
+    rules,
+    preferences,
+  ]);
+
+  useEffect(() => {
+    saveImprovementIdeas(improvementIdeas);
+  }, [improvementIdeas]);
 
   // ───── Launches ─────
   function addLaunch(launch) {
@@ -229,11 +291,31 @@ export function useCRMStore() {
     setRequirements(Array.isArray(nextRequirements) ? nextRequirements : []);
   }
 
+  // ───── Improvement ideas ─────
+  function addImprovementIdea(idea) {
+    setImprovementIdeas((prev) => [...prev, idea]);
+  }
+
+  function updateImprovementIdea(idea) {
+    setImprovementIdeas((prev) =>
+      prev.map((item) => (item.id === idea.id ? idea : item))
+    );
+  }
+
+  function deleteImprovementIdea(id) {
+    setImprovementIdeas((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function replaceImprovementIdeas(nextIdeas) {
+    setImprovementIdeas(Array.isArray(nextIdeas) ? nextIdeas : []);
+  }
+
   return {
     launches,
     channels,
     performanceReports,
     requirements,
+    improvementIdeas,
     messages,
     rules,
     preferences,
@@ -254,6 +336,11 @@ export function useCRMStore() {
     updateRequirement,
     deleteRequirement,
     replaceRequirements,
+
+    addImprovementIdea,
+    updateImprovementIdea,
+    deleteImprovementIdea,
+    replaceImprovementIdeas,
 
     setMessages,
     setRules,

@@ -2,12 +2,14 @@ import { format, parseISO, eachDayOfInterval } from "date-fns";
 import {
   detectConflicts,
   calculateEndDate,
+  calculateLatestAllowedStartDate,
   formatDisplayDate,
   getChannelDisplayName,
   getChannelSubtitle,
   getChannelTitle,
 } from "./crm-store";
 import {
+  getRequirementDateConstraints,
   normalizeAudience,
   PLANNABLE_REQUIREMENT_STATUSES,
 } from "./requirements-domain";
@@ -130,6 +132,10 @@ function isBalanceKBAudience(value) {
   return normalizeLooseText(normalizeAudience(value || "")) === BALANCE_KB_AUDIENCE;
 }
 
+function isRegistryAudience(value) {
+  return normalizeLooseText(normalizeAudience(value || "")) === "реестр";
+}
+
 function isPushChannel(channel) {
   const token = normalizeLooseText(
     `${channel?.title || ""} ${channel?.subtitle || ""} ${channel?.name || ""}`
@@ -167,12 +173,19 @@ function buildKBAudienceScheduleRule(
   baseWindowStart
 ) {
   const audience = requirement?.audience;
-  const isPlanned = isPlannedKBAudience(audience);
+  if (isWinnersAudience(audience) || isRegistryAudience(audience)) return null;
+
+  const gameProfile = getGamePlanningProfile(requirement?.game);
+  const isKBGame = gameProfile.type === "kb_utilization";
+  const isPlanned = isPlannedKBAudience(audience) || (isKBGame && !isBalanceKBAudience(audience));
   const isBalance = isBalanceKBAudience(audience);
-  if (!isPlanned && !isBalance) return null;
+  if (!isKBGame && !isPlannedKBAudience(audience) && !isBalance) return null;
 
   const referenceDate =
-    baseWindowStart || requirement?.weekStart || requirement?.fixedStartDate;
+    baseWindowStart ||
+    requirement?.earliestStartDate ||
+    requirement?.fixedStartDate ||
+    requirement?.weekStart;
   const hardWindowStart = buildDateInSameMonth(referenceDate, isPlanned ? 10 : 20);
   const preferredWindowEnd = buildDateInSameMonth(referenceDate, isPlanned ? 15 : 30);
   const hardWindowEnd = buildDateInSameMonth(referenceDate, isPlanned ? 20 : 30);
@@ -180,7 +193,7 @@ function buildKBAudienceScheduleRule(
   if (!hardWindowStart || !hardWindowEnd) return null;
 
   const monthKey = getMonthKey(hardWindowStart);
-  const preferredPushDays = isPlanned ? [10, 13, 15] : [20, 23, 27];
+  const preferredPushDays = isPlanned ? [10, 13, 15] : [20, 23, 25];
 
   const existingPushCount = isPushChannel(channel)
     ? pool.filter((launch) => {
@@ -500,6 +513,7 @@ function scoreCandidate({
   candidate,
   windowStart,
   windowEnd,
+  latestEndDate,
   existing,
   compiled,
   maxPerDay,
@@ -510,6 +524,7 @@ function scoreCandidate({
 }) {
   const endDate = calculateEndDate(candidate.startDate, candidate.duration);
   if (!endDate) return null;
+  if (latestEndDate && endDate > latestEndDate) return null;
 
   candidate.endDate = endDate;
 
@@ -792,6 +807,7 @@ function pickBestSlot({
   channel,
   windowStart,
   windowEnd,
+  latestEndDate,
   existing,
   compiled,
   maxPerDay,
@@ -800,7 +816,14 @@ function pickBestSlot({
   performanceReports,
   channels,
 }) {
-  const dates = dateRange(windowStart, windowEnd);
+  const latestAllowedStart = latestEndDate
+    ? calculateLatestAllowedStartDate(latestEndDate, getChannelDuration(channel))
+    : "";
+  const effectiveWindowEnd =
+    latestAllowedStart && latestAllowedStart < windowEnd
+      ? latestAllowedStart
+      : windowEnd;
+  const dates = dateRange(windowStart, effectiveWindowEnd);
   let best = null;
   const alternatives = [];
 
@@ -821,7 +844,8 @@ function pickBestSlot({
       channel,
       candidate,
       windowStart,
-      windowEnd,
+      windowEnd: effectiveWindowEnd,
+      latestEndDate,
       existing,
       compiled,
       maxPerDay,
@@ -855,16 +879,23 @@ function pickBestSlot({
 }
 
 function getRequirementWindow(requirement) {
-  if (requirement.hasFixedDates === "yes" && requirement.fixedStartDate) {
+  const constraints = getRequirementDateConstraints(requirement);
+
+  if (requirement.hasFixedDates === "yes" && constraints.earliestStartDate) {
     return {
-      start: requirement.fixedStartDate,
-      end: requirement.fixedEndDate || requirement.fixedStartDate,
+      start: constraints.earliestStartDate,
+      end: constraints.latestStartDate || constraints.earliestStartDate,
+      latestEnd:
+        constraints.latestEndDate ||
+        constraints.latestStartDate ||
+        constraints.earliestStartDate,
     };
   }
 
   return {
     start: requirement.weekStart,
     end: requirement.weekEnd,
+    latestEnd: "",
   };
 }
 
@@ -936,6 +967,7 @@ function buildProposedLaunch({
   bestSlot,
   effectiveStart,
   effectiveEnd,
+  latestEndDate,
   assistantDirectives,
   specialScheduleRule,
   channelAttempts,
@@ -956,6 +988,7 @@ function buildProposedLaunch({
     audience: requirement.audience || "",
     priority: normalizeLaunchPriority(requirement.priority),
     planningStatus: previousLaunch?.planningStatus || "бэклог",
+    registryStatus: previousLaunch?.registryStatus || "нет",
     sentBaseCount: previousLaunch?.sentBaseCount || "",
     campaignType: previousLaunch?.campaignType || "CRM акция",
     comment: requirement.comment
@@ -965,6 +998,7 @@ function buildProposedLaunch({
     conflictStatus: "ok",
     earliestStartDate: effectiveStart,
     latestStartDate: effectiveEnd,
+    latestEndDate: latestEndDate || bestSlot.endDate,
     manager: previousLaunch?.manager || "",
     _fromRequirementId: requirement.id,
     _score: bestSlot.score,
@@ -975,6 +1009,7 @@ function buildProposedLaunch({
       alternatives: bestSlot.alternatives,
       windowStart: effectiveStart,
       windowEnd: effectiveEnd,
+      latestEndDate: latestEndDate || bestSlot.endDate,
       channelId: channel.id,
       assistantDirectives,
       specialScheduleRule,
@@ -1006,7 +1041,11 @@ function optimizeProposedLaunches({
     const requirement = requirementById.get(launch._fromRequirementId);
     if (!requirement) return;
 
-    const { start: windowStart, end: windowEnd } = getRequirementWindow(requirement);
+    const {
+      start: windowStart,
+      end: windowEnd,
+      latestEnd: latestEndDate,
+    } = getRequirementWindow(requirement);
     if (!windowStart || !windowEnd) return;
 
     const currentScore = Number(launch._score || launch._planningMeta?.score || 0);
@@ -1049,6 +1088,7 @@ function optimizeProposedLaunches({
         channel,
         windowStart: effectiveStart,
         windowEnd: effectiveEnd,
+        latestEndDate,
         existing: poolWithoutCurrent,
         compiled,
         maxPerDay,
@@ -1066,6 +1106,7 @@ function optimizeProposedLaunches({
         bestSlot,
         effectiveStart,
         effectiveEnd,
+        latestEndDate,
         assistantDirectives,
         specialScheduleRule,
         previousLaunch: launch,
@@ -1127,10 +1168,12 @@ export async function downloadLaunchesTemplate() {
     "Конец",
     "Ранняя дата",
     "Поздняя дата",
+    "Поздний срок окончания",
     "Платформа",
     "База",
     "Приоритет",
     "Статус",
+    "Реестр",
     "База коммуникаций",
     "Менеджер",
     "Комментарий",
@@ -1152,8 +1195,9 @@ export async function downloadRequirementsTemplate() {
     "База",
     "Приоритет",
     "Жесткая привязка к датам",
-    "Дата с",
-    "Дата до",
+    "Самая ранняя дата запуска",
+    "Самая поздняя дата запуска",
+    "Самый поздний срок окончания",
     "Статус",
     "Ожидаемый результат",
     "Комментарий",
@@ -1214,7 +1258,11 @@ export function buildSchedule({
       continue;
     }
 
-    let { start: windowStart, end: windowEnd } = getRequirementWindow(req);
+    let {
+      start: windowStart,
+      end: windowEnd,
+      latestEnd: latestEndDate,
+    } = getRequirementWindow(req);
 
     if (!windowStart || !windowEnd) {
       skipped.push({ req, reason: "Не задано окно дат" });
@@ -1239,8 +1287,11 @@ export function buildSchedule({
     const priorityTier = getPriorityTier(req.priority);
     const gameProfile = getGamePlanningProfile(req.game);
     targetChannels = [...targetChannels].sort((a, b) => {
-      const windowCoverageStart = req.fixedStartDate || req.weekStart || windowStart;
-      const windowCoverageEnd = req.fixedEndDate || req.weekEnd || windowEnd;
+      const requirementConstraints = getRequirementDateConstraints(req);
+      const windowCoverageStart =
+        requirementConstraints.earliestStartDate || req.weekStart || windowStart;
+      const windowCoverageEnd =
+        requirementConstraints.latestEndDate || req.weekEnd || latestEndDate || windowEnd;
       const scoreA =
         scoreChannelEffectiveness(a, req, performanceReports, channels).score *
           getEffectivenessPriorityWeight(priorityTier) *
@@ -1288,6 +1339,7 @@ export function buildSchedule({
       const dateOverride = getAssistantDateWindowOverride(req, channel.id, compiled);
       let effectiveStart = dateOverride?.start || windowStart;
       let effectiveEnd = dateOverride?.end || windowEnd;
+      let effectiveLatestEnd = latestEndDate || "";
       const specialScheduleRule = buildKBAudienceScheduleRule(
         req,
         channel,
@@ -1299,6 +1351,9 @@ export function buildSchedule({
       if (specialScheduleRule) {
         effectiveStart = specialScheduleRule.hardWindowStart;
         effectiveEnd = specialScheduleRule.hardWindowEnd;
+        if (!effectiveLatestEnd || effectiveLatestEnd > specialScheduleRule.hardWindowEnd) {
+          effectiveLatestEnd = specialScheduleRule.hardWindowEnd;
+        }
       }
 
       const bestSlot = pickBestSlot({
@@ -1306,6 +1361,7 @@ export function buildSchedule({
         channel,
         windowStart: effectiveStart,
         windowEnd: effectiveEnd,
+        latestEndDate: effectiveLatestEnd,
         existing: pool,
         compiled,
         maxPerDay,
@@ -1329,6 +1385,7 @@ export function buildSchedule({
         bestSlot,
         effectiveStart,
         effectiveEnd,
+        latestEndDate: effectiveLatestEnd,
         assistantDirectives,
         specialScheduleRule,
       });

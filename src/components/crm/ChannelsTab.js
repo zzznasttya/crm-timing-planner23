@@ -155,6 +155,7 @@ function ChannelForm({ value, onChange }) {
 
 export default function ChannelsTab({
   channels,
+  readOnly = false,
   onAddChannel,
   onBulkAddChannels,
   onBulkDeleteChannels,
@@ -401,13 +402,28 @@ export default function ChannelsTab({
         </div>
 
         <div className="toolbar-right">
-          <button className="btn btn-primary" onClick={handleOpenCreate}>
-            Добавить канал
-          </button>
+          {readOnly ? (
+            <div
+              className="muted small"
+              style={{
+                padding: "10px 14px",
+                borderRadius: "999px",
+                border: "1px solid #e5e7eb",
+                background: "#ffffff",
+                fontWeight: 700,
+              }}
+            >
+              Справочник зафиксирован
+            </div>
+          ) : (
+            <button className="btn btn-primary" onClick={handleOpenCreate}>
+              Добавить канал
+            </button>
+          )}
         </div>
       </div>
 
-      {selectedChannels.length > 0 && (
+      {selectedChannels.length > 0 && !readOnly && (
         <div
           className="section-card"
           style={{
@@ -470,14 +486,16 @@ export default function ChannelsTab({
                   marginBottom: "14px",
                 }}
               >
-                <div onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={(event) => handleSelectChange(event, channel.id)}
-                    style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                  />
-                </div>
+                {!readOnly && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(event) => handleSelectChange(event, channel.id)}
+                      style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                    />
+                  </div>
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -632,30 +650,38 @@ export default function ChannelsTab({
                   flexWrap: "wrap",
                 }}
               >
-                <button
-                  className="btn-small"
-                  onClick={() => handleOpenEdit(channel)}
-                >
-                  Редактировать
-                </button>
+                {readOnly ? (
+                  <div className="muted small" style={{ fontWeight: 700 }}>
+                    Канал доступен только для просмотра
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      className="btn-small"
+                      onClick={() => handleOpenEdit(channel)}
+                    >
+                      Редактировать
+                    </button>
 
-                <button
-                  className="btn-small"
-                  onClick={() =>
-                    (typeof onBulkAddChannels === "function"
-                      ? onBulkAddChannels([buildDuplicateChannel(channel)])
-                      : onAddChannel(buildDuplicateChannel(channel)))
-                  }
-                >
-                  Дублировать
-                </button>
+                    <button
+                      className="btn-small"
+                      onClick={() =>
+                        (typeof onBulkAddChannels === "function"
+                          ? onBulkAddChannels([buildDuplicateChannel(channel)])
+                          : onAddChannel(buildDuplicateChannel(channel)))
+                      }
+                    >
+                      Дублировать
+                    </button>
 
-                <button
-                  className="btn-small btn-danger"
-                  onClick={() => handleDelete(channel)}
-                >
-                  Удалить
-                </button>
+                    <button
+                      className="btn-small btn-danger"
+                      onClick={() => handleDelete(channel)}
+                    >
+                      Удалить
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );

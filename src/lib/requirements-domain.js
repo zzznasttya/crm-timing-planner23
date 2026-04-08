@@ -9,7 +9,7 @@ export const AUDIENCE_OPTIONS = [
   "РГ",
   "стафф",
   "500 к",
-  "реестр",
+  "Реестр",
   "клиенты с план. начислением КБ",
   "клиенты с остатками КБ",
 ];
@@ -111,6 +111,7 @@ export function normalizeAudience(value) {
 
   if (normalized === "акб") return "АКБ";
   if (normalized === "рг") return "РГ";
+  if (normalized === "реестр") return "Реестр";
   return raw;
 }
 
@@ -149,6 +150,9 @@ export function createEmptyRequirement() {
     audience: AUDIENCE_OPTIONS[0],
     priority: "3",
     hasFixedDates: "no",
+    earliestStartDate: "",
+    latestStartDate: "",
+    latestEndDate: "",
     fixedStartDate: "",
     fixedEndDate: "",
     desiredResult: "",
@@ -157,18 +161,101 @@ export function createEmptyRequirement() {
   };
 }
 
-export function normalizeRequirement(item) {
-  const safeWeekStart = getClosestWeekStart(
-    item?.weekStart || formatDate(getMonday())
-  );
-  const safeRange = getWeekRange(safeWeekStart);
+function clampRequirementDateConstraints({
+  hasFixedDates,
+  earliestStartDate,
+  latestStartDate,
+  latestEndDate,
+}) {
+  if (hasFixedDates !== "yes") {
+    return {
+      earliestStartDate: "",
+      latestStartDate: "",
+      latestEndDate: "",
+    };
+  }
+
+  const safeEarliest = String(earliestStartDate || "").trim();
+  let safeLatestStart = String(latestStartDate || safeEarliest).trim();
+  let safeLatestEnd = String(
+    latestEndDate || safeLatestStart || safeEarliest
+  ).trim();
+
+  if (safeEarliest && safeLatestStart && safeLatestStart < safeEarliest) {
+    safeLatestStart = safeEarliest;
+  }
+
+  if (safeLatestStart && safeLatestEnd && safeLatestEnd < safeLatestStart) {
+    safeLatestEnd = safeLatestStart;
+  }
+
+  if (!safeLatestStart && safeEarliest) {
+    safeLatestStart = safeEarliest;
+  }
+
+  if (!safeLatestEnd && (safeLatestStart || safeEarliest)) {
+    safeLatestEnd = safeLatestStart || safeEarliest;
+  }
+
+  return {
+    earliestStartDate: safeEarliest,
+    latestStartDate: safeLatestStart,
+    latestEndDate: safeLatestEnd,
+  };
+}
+
+export function getRequirementDateConstraints(item) {
   const hasFixedDates = normalizeFixedDateMode(item?.hasFixedDates);
-  const fixedStartDate =
-    hasFixedDates === "yes" ? String(item?.fixedStartDate || "").trim() : "";
-  const fixedEndDate =
-    hasFixedDates === "yes"
-      ? String(item?.fixedEndDate || item?.fixedStartDate || "").trim()
-      : "";
+
+  if (hasFixedDates !== "yes") {
+    const weekStart = getClosestWeekStart(item?.weekStart || formatDate(getMonday()));
+    const weekRange = getWeekRange(weekStart);
+    return {
+      hasFixedDates,
+      earliestStartDate: weekRange.weekStart,
+      latestStartDate: weekRange.weekEnd,
+      latestEndDate: "",
+    };
+  }
+
+  const rawEarliest =
+    item?.earliestStartDate || item?.fixedStartDate || item?.weekStart || "";
+  const rawLatestStart =
+    item?.latestStartDate || item?.fixedStartDate || rawEarliest || "";
+  const rawLatestEnd =
+    item?.latestEndDate ||
+    item?.fixedEndDate ||
+    rawLatestStart ||
+    rawEarliest ||
+    item?.weekEnd ||
+    "";
+
+  return {
+    hasFixedDates,
+    ...clampRequirementDateConstraints({
+      hasFixedDates,
+      earliestStartDate: rawEarliest,
+      latestStartDate: rawLatestStart,
+      latestEndDate: rawLatestEnd,
+    }),
+  };
+}
+
+export function normalizeRequirement(item) {
+  const { hasFixedDates, earliestStartDate, latestStartDate, latestEndDate } =
+    getRequirementDateConstraints(item);
+
+  const fixedStartDate = earliestStartDate;
+  const fixedEndDate = latestEndDate;
+
+  const safeWeekStart =
+    hasFixedDates === "yes" && earliestStartDate
+      ? getWeekRange(earliestStartDate).weekStart
+      : getClosestWeekStart(item?.weekStart || formatDate(getMonday()));
+  const safeWeekEnd =
+    hasFixedDates === "yes" && (latestEndDate || latestStartDate || earliestStartDate)
+      ? getWeekRange(latestEndDate || latestStartDate || earliestStartDate).weekEnd
+      : getWeekRange(safeWeekStart).weekEnd;
 
   const normalizedStatus = normalizeText(item?.status);
   const safeStatus =
@@ -182,13 +269,16 @@ export function normalizeRequirement(item) {
     id:
       item?.id ||
       `requirement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    weekStart: safeRange.weekStart,
-    weekEnd: safeRange.weekEnd,
+    weekStart: safeWeekStart,
+    weekEnd: safeWeekEnd,
     game: item?.game || DEFAULT_GAME,
     channelIds: normalizeChannelIds(item),
     audience: normalizeAudience(item?.audience),
     priority: normalizePriority(item?.priority),
     hasFixedDates,
+    earliestStartDate,
+    latestStartDate,
+    latestEndDate,
     fixedStartDate,
     fixedEndDate,
     desiredResult: item?.desiredResult || "",
@@ -205,6 +295,9 @@ export function getRequirementFingerprint(item) {
     audience: normalizeText(normalized.audience),
     priority: normalized.priority,
     hasFixedDates: normalized.hasFixedDates,
+    earliestStartDate: normalized.earliestStartDate,
+    latestStartDate: normalized.latestStartDate,
+    latestEndDate: normalized.latestEndDate,
     fixedStartDate: normalized.fixedStartDate,
     fixedEndDate: normalized.fixedEndDate,
     weekStart: normalized.weekStart,

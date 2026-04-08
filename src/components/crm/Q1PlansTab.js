@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { formatDisplayDate, getChannelName } from "../../lib/crm-store";
+import { getRequirementDateConstraints } from "../../lib/requirements-domain";
 
 const MONTHS = [
   { index: 0, key: "01", label: "Январь" },
@@ -38,13 +39,14 @@ function launchIntersectsMonth(launch, monthRange) {
 }
 
 function requirementIntersectsMonth(requirement, monthRange) {
+  const constraints = getRequirementDateConstraints(requirement);
   const start =
-    requirement?.hasFixedDates === "yes" && requirement?.fixedStartDate
-      ? requirement.fixedStartDate
+    requirement?.hasFixedDates === "yes" && constraints?.earliestStartDate
+      ? constraints.earliestStartDate
       : requirement?.weekStart;
   const end =
-    requirement?.hasFixedDates === "yes" && (requirement?.fixedEndDate || requirement?.fixedStartDate)
-      ? requirement.fixedEndDate || requirement.fixedStartDate
+    requirement?.hasFixedDates === "yes" && constraints?.latestEndDate
+      ? constraints.latestEndDate
       : requirement?.weekEnd;
 
   if (!start || !end) return false;
@@ -261,13 +263,14 @@ export default function Q1PlansTab({ launches, requirements, channels }) {
                         </tr>
                       ) : (
                         month.requirements.map((requirement) => {
+                          const constraints = getRequirementDateConstraints(requirement);
                           const start =
-                            requirement.hasFixedDates === "yes" && requirement.fixedStartDate
-                              ? requirement.fixedStartDate
+                            requirement.hasFixedDates === "yes" && constraints.earliestStartDate
+                              ? constraints.earliestStartDate
                               : requirement.weekStart;
                           const end =
-                            requirement.hasFixedDates === "yes"
-                              ? requirement.fixedEndDate || requirement.fixedStartDate
+                            requirement.hasFixedDates === "yes" && constraints.latestEndDate
+                              ? constraints.latestEndDate
                               : requirement.weekEnd;
 
                           return (

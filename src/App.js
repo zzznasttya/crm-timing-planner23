@@ -8,6 +8,7 @@ import BusinessRequirementsTab from "./components/crm/BusinessRequirementsTab";
 import BKPTab from "./components/crm/BKPTab";
 import FactTab from "./components/crm/FactTab";
 import Q1PlansTab from "./components/crm/Q1PlansTab";
+import ImprovementIdeasTab from "./components/crm/ImprovementIdeasTab";
 import AssistantPanel from "./components/crm/AssistantPanel";
 import ScheduleDraftModal from "./components/crm/ScheduleDraftModal";
 import { ToastProvider, useToast } from "./components/crm/Toast";
@@ -62,9 +63,32 @@ function dedupeLaunchesForStore(launches, channels) {
   return Array.from(byKey.values());
 }
 
+const ACTIVE_TAB_STORAGE_KEY = "crm-active-tab-v1";
+const CHANNELS_READ_ONLY = false;
+const AVAILABLE_TABS = new Set([
+  "launches",
+  "channels",
+  "calendar",
+  "channel-load",
+  "q1",
+  "fact",
+  "ideas",
+  "business-requirements",
+  "bkp",
+]);
+
+function loadInitialActiveTab() {
+  try {
+    const storedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    return AVAILABLE_TABS.has(storedTab) ? storedTab : "launches";
+  } catch {
+    return "launches";
+  }
+}
+
 function AppInner() {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState("launches");
+  const [activeTab, setActiveTab] = useState(loadInitialActiveTab);
   const [scheduleDraft, setScheduleDraft] = useState(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [mascotHover, setMascotHover] = useState(false);
@@ -77,6 +101,7 @@ function AppInner() {
     channels,
     performanceReports,
     requirements,
+    improvementIdeas,
     messages,
     rules,
     preferences,
@@ -93,6 +118,10 @@ function AppInner() {
     updateRequirement,
     deleteRequirement,
     replaceRequirements,
+    addImprovementIdea,
+    updateImprovementIdea,
+    deleteImprovementIdea,
+    replaceImprovementIdeas,
     setMessages,
     setRules,
     setPreferences,
@@ -107,6 +136,12 @@ function AppInner() {
     () => requirements.filter((requirement) => requirement.status === "новое").length,
     [requirements]
   );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch {}
+  }, [activeTab]);
 
   useEffect(() => {
     if (catalogSeeded) return;
@@ -141,6 +176,11 @@ function AppInner() {
       return;
     }
 
+    if (CHANNELS_READ_ONLY) {
+      setCatalogSeeded(true);
+      return;
+    }
+
     const missingCatalogChannels = getMissingCatalogChannels(channels);
     if (!missingCatalogChannels.length) {
       setCatalogSeeded(true);
@@ -149,7 +189,13 @@ function AppInner() {
 
     missingCatalogChannels.forEach((channel) => addChannel(channel));
     setCatalogSeeded(true);
-  }, [channels, addChannel, replaceChannels, catalogSeeded, preferences.disableCatalogAutoSeed]);
+  }, [
+    channels,
+    addChannel,
+    replaceChannels,
+    catalogSeeded,
+    preferences.disableCatalogAutoSeed,
+  ]);
 
   useEffect(() => {
     const dedupedLaunches = dedupeLaunchesForStore(launches, channels);
@@ -166,12 +212,30 @@ function AppInner() {
           : launch?.endDate || "";
 
       if (!expectedEndDate || expectedEndDate === launch.endDate) {
-        return launch;
+        const expectedLatestEndDate = launch?.latestEndDate || expectedEndDate;
+        const expectedRegistryStatus = launch?.registryStatus || "нет";
+        if (
+          expectedLatestEndDate === launch?.latestEndDate &&
+          expectedRegistryStatus === launch?.registryStatus
+        ) {
+          return launch;
+        }
+
+        return {
+          ...launch,
+          latestEndDate: expectedLatestEndDate,
+          registryStatus: expectedRegistryStatus,
+        };
       }
 
       return {
         ...launch,
         endDate: expectedEndDate,
+        latestEndDate:
+          launch?.latestEndDate && launch.latestEndDate >= expectedEndDate
+            ? launch.latestEndDate
+            : expectedEndDate,
+        registryStatus: launch?.registryStatus || "нет",
       };
     });
 
@@ -193,6 +257,7 @@ function AppInner() {
         channels: channels.map((c) => ({ ...c })),
         requirements: requirements.map((r) => ({ ...r })),
         preferences: { ...preferences },
+        improvementIdeas: improvementIdeas.map((idea) => ({ ...idea })),
       },
     ]);
   }
@@ -203,6 +268,9 @@ function AppInner() {
     replaceChannels((prev.channels || []).map((channel) => ({ ...channel })));
     replaceRequirements(
       (prev.requirements || []).map((requirement) => ({ ...requirement }))
+    );
+    replaceImprovementIdeas(
+      (prev.improvementIdeas || []).map((idea) => ({ ...idea }))
     );
     setPreferences({
       ...preferences,
@@ -245,27 +313,47 @@ function AppInner() {
     toast("Удалено " + ids.length + " запусков");
   }
   function handleAddChannel(ch) {
+    if (CHANNELS_READ_ONLY) {
+      toast("Справочник каналов зафиксирован и меняется только через код", "warn");
+      return;
+    }
     pushSnapshot();
     addChannel(ch);
     toast("Канал добавлен");
   }
   function handleUpdateChannel(ch) {
+    if (CHANNELS_READ_ONLY) {
+      toast("Справочник каналов зафиксирован и меняется только через код", "warn");
+      return;
+    }
     pushSnapshot();
     updateChannel(ch);
     toast("Канал сохранён");
   }
   function handleDeleteChannel(id) {
+    if (CHANNELS_READ_ONLY) {
+      toast("Справочник каналов зафиксирован и меняется только через код", "warn");
+      return;
+    }
     pushSnapshot();
     deleteChannel(id);
     toast("Канал удалён");
   }
   function handleBulkAddChannels(nextChannels) {
+    if (CHANNELS_READ_ONLY) {
+      toast("Справочник каналов зафиксирован и меняется только через код", "warn");
+      return;
+    }
     if (!Array.isArray(nextChannels) || !nextChannels.length) return;
     pushSnapshot();
     replaceChannels([...channels, ...nextChannels]);
     toast("Добавлено " + nextChannels.length + " каналов");
   }
   function handleBulkDeleteChannels(ids) {
+    if (CHANNELS_READ_ONLY) {
+      toast("Справочник каналов зафиксирован и меняется только через код", "warn");
+      return;
+    }
     if (!Array.isArray(ids) || !ids.length) return;
     const idsSet = new Set(ids);
     pushSnapshot();
@@ -345,6 +433,24 @@ function AppInner() {
       requirements.filter((requirement) => !idsSet.has(requirement.id))
     );
     toast("Удалено " + ids.length + " бизнес-требований");
+  }
+
+  function handleAddImprovementIdea(idea) {
+    pushSnapshot();
+    addImprovementIdea(idea);
+    toast("Предложение добавлено");
+  }
+
+  function handleUpdateImprovementIdea(idea) {
+    pushSnapshot();
+    updateImprovementIdea(idea);
+    toast("Предложение обновлено");
+  }
+
+  function handleDeleteImprovementIdea(id) {
+    pushSnapshot();
+    deleteImprovementIdea(id);
+    toast("Предложение удалено");
   }
 
   function handleImportRequirements(importedRequirements) {
@@ -623,6 +729,17 @@ function AppInner() {
 
       <div className="container">
         <div
+          style={{
+            marginBottom: "12px",
+            color: "#8d8d8d",
+            fontSize: "12px",
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+          }}
+        >
+          по всем вопросам к @zvg_anastasiia
+        </div>
+        <div
           className="hero"
         >
           <div className="hero-copy">
@@ -650,17 +767,26 @@ function AppInner() {
           <div className="tabs">
             {[
               ["launches", "Запуски"],
-              ["channels", "Каналы"],
+              ["business-requirements", "Бизнес-требования"],
               ["calendar", "Календарь"],
+              ["ideas", "Улучшения"],
+              ["channels", "Каналы"],
+              ["fact", "Факт"],
               ["channel-load", "Загрузка каналов"],
               ["q1", "Q1"],
-              ["fact", "Факт"],
-              ["business-requirements", "Бизнес-требования"],
               ["bkp", "БКП"],
             ].map(([id, label]) => (
               <button
                 key={id}
-                className={"tab" + (activeTab === id ? " tab-active" : "")}
+                className={
+                  "tab" +
+                  (["launches", "business-requirements", "calendar", "ideas"].includes(
+                    id
+                  )
+                    ? " tab-priority"
+                    : "") +
+                  (activeTab === id ? " tab-active" : "")
+                }
                 onClick={() => setActiveTab(id)}
               >
                 {label}
@@ -689,6 +815,7 @@ function AppInner() {
           {activeTab === "channels" && (
             <ChannelsTab
               channels={channels}
+              readOnly={CHANNELS_READ_ONLY}
               onAddChannel={handleAddChannel}
               onBulkAddChannels={handleBulkAddChannels}
               onBulkDeleteChannels={handleBulkDeleteChannels}
@@ -715,6 +842,14 @@ function AppInner() {
               channels={channels}
               performanceReports={performanceReports}
               onImportReports={handleImportPerformanceReports}
+            />
+          )}
+          {activeTab === "ideas" && (
+            <ImprovementIdeasTab
+              ideas={improvementIdeas}
+              onAddIdea={handleAddImprovementIdea}
+              onUpdateIdea={handleUpdateImprovementIdea}
+              onDeleteIdea={handleDeleteImprovementIdea}
             />
           )}
           {activeTab === "business-requirements" && (
