@@ -780,7 +780,7 @@ function AppInner() {
                 key={id}
                 className={
                   "tab" +
-                  (["launches", "business-requirements", "calendar", "ideas"].includes(
+                  (["launches", "business-requirements", "calendar", "ideas", "channels"].includes(
                     id
                   )
                     ? " tab-priority"

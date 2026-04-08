@@ -167,7 +167,9 @@ body {
 }
 
 .tab-priority {
-  color: #747474;
+  color: #1f1f1f;
+  background: rgba(245, 245, 245, 0.96);
+  border-color: #d8d8d8;
 }
 
 .tab:hover {
@@ -177,17 +179,20 @@ body {
 }
 
 .tab-priority:hover {
-  color: #4f4f4f;
+  color: #000000;
+  background: #f0f0f0;
+  border-color: #cfcfcf;
 }
 
 .tab-active {
-  background: #ffffff;
-  color: #6e6e6e;
-  border-color: var(--line-strong);
+  background: #ededed;
+  color: #000000;
+  border-color: #d0d0d0;
+  box-shadow: 0 6px 16px rgba(15, 15, 15, 0.06);
 }
 
 .tab-priority.tab-active {
-  color: #202020;
+  color: #000000;
 }
 
 .toolbar {
