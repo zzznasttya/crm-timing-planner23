@@ -527,6 +527,39 @@ function formatRuDate(dateString) {
   return formatDisplayDate(dateString);
 }
 
+function formatWeekdayShort(dateString) {
+  if (!dateString) return "—";
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("ru-RU", { weekday: "short" })
+    .format(date)
+    .replace(".", "")
+    .toLowerCase();
+}
+
+function getWeekKey(dateString) {
+  const weekStart = getWeekStartFromDateString(dateString);
+  if (!weekStart) return "";
+  return weekStart.toISOString().slice(0, 10);
+}
+
+function getLaunchRiskSummary(launch) {
+  if (launch.conflictStatus !== "conflict") {
+    return {
+      label: "Всё ок",
+      tone: "ok",
+      note: "Без пересечений",
+    };
+  }
+
+  const firstIssue = Array.isArray(launch.issues) ? launch.issues[0] : "";
+  return {
+    label: "Риск",
+    tone: "risk",
+    note: firstIssue || "Есть конфликт",
+  };
+}
+
 function shiftDateByDays(dateString, days) {
   if (!dateString || !Number.isFinite(days) || days === 0) return dateString;
   const date = new Date(`${dateString}T00:00:00`);
@@ -1242,6 +1275,16 @@ export default function LaunchesTab({
         audienceValue.includes(searchValue);
 
       return overlapsPeriod && matchesSearch;
+    }).sort((a, b) => {
+      const startCompare = String(a.startDate || "").localeCompare(
+        String(b.startDate || "")
+      );
+      if (startCompare !== 0) return startCompare;
+
+      const gameCompare = String(a.game || "").localeCompare(String(b.game || ""), "ru");
+      if (gameCompare !== 0) return gameCompare;
+
+      return String(a.channelId || "").localeCompare(String(b.channelId || ""));
     });
   }, [launches, search, periodStart, calendarMode]);
 
@@ -1930,6 +1973,7 @@ export default function LaunchesTab({
               <thead>
                 <tr>
                   <th style={{ width: 44 }}></th>
+                  <th>День</th>
                   <th>Игра</th>
                   <th>Канал</th>
                   <th>Старт</th>
@@ -1940,7 +1984,7 @@ export default function LaunchesTab({
                   <th>Приоритет</th>
                   <th>Статус</th>
                   <th>База комм.</th>
-                  <th>Конфликт</th>
+                  <th>Риск</th>
                 </tr>
               </thead>
 
@@ -1949,7 +1993,7 @@ export default function LaunchesTab({
                 {editingId === "new" && editingData && (
                   <tr style={{ background: "#f8faff" }}>
                     <td />
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <InlineForm
                         value={editingData}
                         channels={channels}
@@ -1982,12 +2026,20 @@ export default function LaunchesTab({
                   </tr>
                 )}
 
-                {filtered.map((launch) => {
+                {filtered.map((launch, index) => {
                   const isEditing = editingId === launch.id;
+                  const previousLaunch = filtered[index - 1];
+                  const startsNewWeek =
+                    !previousLaunch ||
+                    getWeekKey(previousLaunch.startDate) !== getWeekKey(launch.startDate);
+                  const risk = getLaunchRiskSummary(launch);
                   return (
                     <React.Fragment key={launch.id}>
                       {isEditing ? (
-                        <tr style={{ background: "#f8faff" }}>
+                        <tr
+                          style={{ background: "#f8faff" }}
+                          className={startsNewWeek ? "launches-week-separator" : ""}
+                        >
                           <td>
                             <input
                               type="checkbox"
@@ -1998,7 +2050,7 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
-                          <td colSpan={11}>
+                          <td colSpan={12}>
                             <InlineForm
                               value={editingData}
                               channels={channels}
@@ -2030,6 +2082,7 @@ export default function LaunchesTab({
                         </tr>
                       ) : (
                         <tr
+                          className={startsNewWeek ? "launches-week-separator" : ""}
                           style={{ cursor: "pointer" }}
                           onDoubleClick={() => {
                             setEditingId(launch.id);
@@ -2051,6 +2104,11 @@ export default function LaunchesTab({
                               style={{ cursor: "pointer" }}
                             />
                           </td>
+                          <td>
+                            <div className="launch-day-chip">
+                              {formatWeekdayShort(launch.startDate)}
+                            </div>
+                          </td>
                           {renderEditableCell(
                             launch,
                             "game",
@@ -2068,7 +2126,17 @@ export default function LaunchesTab({
                           {renderEditableCell(
                             launch,
                             "startDate",
-                            formatRuDate(launch.startDate)
+                            <div className="launch-date-stack">
+                              <div className="launch-date-main">
+                                {formatRuDate(launch.startDate)}
+                              </div>
+                              <div className="launch-date-sub">
+                                {getWeekKey(launch.startDate) ===
+                                getWeekKey(launch.endDate)
+                                  ? `неделя ${formatRuDate(getWeekKey(launch.startDate))}`
+                                  : "переход недели"}
+                              </div>
+                            </div>
                           )}
                           {renderEditableCell(
                             launch,
@@ -2137,13 +2205,18 @@ export default function LaunchesTab({
                               <td style={{ color: "#94a3b8" }}>—</td>
                             )}
                           <td>
-                            {launch.conflictStatus === "conflict" ? (
-                              <span className="badge badge-red">Конфликт</span>
-                            ) : (
-                              <span className="badge badge-green-light">
-                                Всё ок
+                            <div className="launch-risk-cell">
+                              <span
+                                className={
+                                  risk.tone === "risk"
+                                    ? "badge badge-red"
+                                    : "badge badge-green-light"
+                                }
+                              >
+                                {risk.label}
                               </span>
-                            )}
+                              <div className="launch-risk-note">{risk.note}</div>
+                            </div>
                           </td>
                         </tr>
                       )}

@@ -876,13 +876,12 @@ function getRequirementTargetChannels(requirement, channels) {
   const source =
     winnersChannels.length > 0
       ? winnersChannels
-      : (
-    Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0
+      : Array.isArray(requirement.channelIds) && requirement.channelIds.length > 0
       ? channels.filter((channel) => requirement.channelIds.includes(channel.id))
-      : [...channels]
-        );
+      : [...channels];
 
-  const pairedSource = expandPairedChannels(source, channels);
+  const pairedSource =
+    winnersChannels.length > 0 ? source : expandPairedChannels(source, channels);
 
   const seen = new Set();
   return pairedSource.filter((channel) => {
