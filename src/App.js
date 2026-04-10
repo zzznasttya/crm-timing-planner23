@@ -64,7 +64,7 @@ function dedupeLaunchesForStore(launches, channels) {
 }
 
 const ACTIVE_TAB_STORAGE_KEY = "crm-active-tab-v1";
-const CHANNELS_READ_ONLY = false;
+const CHANNELS_READ_ONLY = true;
 const AVAILABLE_TABS = new Set([
   "launches",
   "channels",
